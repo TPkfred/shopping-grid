@@ -1,0 +1,21 @@
+
+
+# general Mac stuff
+.DS_Store
+
+# general Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+
+# repo-specific
+output/
+in_process/
+*Purgatory/
+*.pptx
+
+# will add any notebooks by hand (they are large, otherwise)
+notebooks/
+
+*.clj
