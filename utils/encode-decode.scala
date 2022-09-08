@@ -7,8 +7,30 @@ spark-shell --jars /projects/apps/cco/estreamingTransformerStream/bin/estreammid
 // ENCODE
 // ====================================
 
+// top X file derived from daily estreaming counts
 import com.tvlp.cco.util.Utils.UDFs._
-val hdfs_dir = "/user/kendra.frederick/lookups/top_markets_2021.csv"
+val hdfs_dir = "/user/kendra.frederick/lookups/top_markets/top_1000_markets.csv"
+val out_dir = "/user/kendra.frederick/lookups/top_markets/top_1000_markets_encoded.csv"
+
+val df = spark.read.option("header", "true").csv(hdfs_dir)
+
+val df2 = (df
+    .withColumn("org_dst_array", split(col("market_key"), "-"))
+    .withColumn("origin", col("org_dst_array").getItem(0))
+    .withColumn("dest", col("org_dst_array").getItem(1))
+    .withColumnRenamed("market_key", "market_key_encoded")
+    .withColumn("OriginAirport", (stringToNumUDF(col("origin"))))
+    .withColumn("DestinationAirport", (stringToNumUDF(col("dest"))))
+    .withColumn("market_key", concat_ws("-",
+        col("OriginAirport"), col("DestinationAirport")))
+    )
+
+df2.drop("org_dst_array").write.option("header", "true").csv(out_dir)
+
+// -----------------------------
+// 2021 csv
+import com.tvlp.cco.util.Utils.UDFs._
+val hdfs_dir = "/user/kendra.frederick/lookups/top_markets/top_markets_2021.csv"
 val df = spark.read.option("header", "true").csv(hdfs_dir)
 
 
@@ -96,7 +118,7 @@ df2.write.mode("overwrite").parquet(out_dir)
 import com.tvlp.cco.util.Utils.UDFs._
 import com.tvlp.cco.util.Utils.QueryHelpers._
 
-val in_dir = "/user/kendra.frederick/shop_vol/raw/v2/markets"
+val in_dir = "/user/kendra.frederick/shop_vol/v3/raw"
 val df = spark.read.parquet(in_dir)
 // counts: 1,950,243
 
