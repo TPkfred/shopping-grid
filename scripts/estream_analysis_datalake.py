@@ -1,5 +1,7 @@
 
 """
+Estreaming data source = datalake format
+
 Script to combine daily analysis of estreaming data
 - Lowest Fare Calendar
     - Data agg'd by market
@@ -29,11 +31,10 @@ import argparse
 # these will likely because arguments some day
 
 APP_NAME = "KF-ShoppingGrid"
-data_dir = "/data/estreaming/midt_1_5/"
-
-top_markets_path = "/user/kendra.frederick/lookups/top_markets/top_1000_markets_encoded.csv"
-# NOTE: modified this for testing
-grid_out_dir = "/user/kendra.frederick/shop_vol/v5/raw/"
+data_dir = "/data/estreaming/datalake_1_5/"
+top_markets_path = "/user/kendra.frederick/lookups/top_markets/top_1000_markets.csv"
+# don't need 'raw' designation, because fields are already decoded
+grid_out_dir = "/user/kendra.frederick/shop_vol/v5_datalake/"
 
 
 # ========================
@@ -85,7 +86,8 @@ start_dt = datetime.datetime.strptime(shop_start_str, "%Y-%m-%d")
 end_dt = datetime.datetime.strptime(shop_end_str, "%Y-%m-%d")
 
 script_start_time = datetime.datetime.now()
-print("{} - Starting script".format(script_start_time.strftime("%Y-%m-%d %H:%M")))
+print("{} - starting script".format(script_start_time.strftime("%Y-%m-%d %H:%M")))
+print("Processing shopping days {} to {} (inclusive)".format(shop_start_str, shop_end_str))
 
 # ========================
 # SETUP SPARK
@@ -113,55 +115,43 @@ else:
 spark.sql("set spark.sql.files.ignoreCorruptFiles=true")
 
 groupby_cols = [
-    'outOriginAirport',
-    'outDestinationAirport',
-    'outDeptDt',
-    
-    # due to conditions imposed, we don't need these
-    # 'inOriginAirport',
-    # 'inDestinationAirport',
-    
-    'inDeptDt',
+    'out_origin_airport',
+    'out_destination_airport',
+    'out_origin_city',
+    'out_destination_city',
+    # NOTE: due to conditions imposed, we don't need in_ fields
     
     # for fare analysis
-    'pos', # is this required for fare analysis?
+    'point_of_sale', # is this required for fare analysis?
     'currency',
 
-    # not in source data; gets added below
-    # 'outMrktCxr_single', 
-    # 'inMrktCxr_single', 
-    'round_trip', 
+    # not in source data; these get created/added below
+    'trip_type',
+    'out_departure_date_gmt',
+    'in_departure_date_gmt'
 ]
 
 if include_pcc:
-    groupby_cols += ['pcc']
+    groupby_cols += ['pcc', 'gds'] # added gds
 
 # ========================
 # HELPER FUNCTIONS & CLAUSES
 
 # filters 
 # for round-trip: outOrigin = inDest and outDest = inOrigin 
-cond_rt = (((F.col("outOriginAirport") == F.col("inDestinationAirport")) &
-         (F.col("outDestinationAirport") == F.col("inOriginAirport"))))
-cond_ow = ((F.col("inOriginAirport") == 0) & (F.col("inDestinationAirport") == 0))
+cond_rt = (((F.col("out_origin_airport") == F.col("in_destination_airport")) &
+         (F.col("out_destination_airport") == F.col("in_origin_airport"))))
+cond_ow = ((F.col("in_origin_airport") == 0) & (F.col("in_destination_airport") == 0))
 
-# ========================
-# MAIN
 
 def common_data_preprocessing(df_raw):
-    # filter on conditions
-    df_filt = df_raw.filter(cond_rt | cond_ow)
-    # add round-trip indicator
-    df_filt = df_filt.withColumn("round_trip", 
-        F.when(cond_rt, 1).otherwise(0))
 
-    df_expl = (df_filt
-        .withColumn("PTC", F.explode("responsePTC"))
-        .withColumn("farePTC", F.explode("fareBreakDownByPTC"))
-        )
-    df_adt = df_expl.filter(F.col("PTC") == "ADT")
-    return df_adt
-    
+    # add round-trip indicator
+    df_mod = df_raw.withColumn("trip_type", 
+        F.when(cond_rt, "rt").otherwise(
+            F.when(cond_ow, "ow").otherwise("other")
+        ))
+    return df_mod
 
 
 def grid_analysis(df_preproc, date_str):
@@ -172,48 +162,52 @@ def grid_analysis(df_preproc, date_str):
     df_preproc = df_preproc.withColumn(
         "market_key",
         F.concat_ws("-",
-            F.col("outOriginAirport").cast(T.StringType()), 
-            F.col("outDestinationAirport").cast(T.StringType())))
-
+            F.col("out_origin_airport"), 
+            F.col("out_destination_airport"))
+    )
     # join with top markets to restrict analysis 
     df_join = df_preproc.join(F.broadcast(markets_df), 
         on="market_key", how="inner")
     
-    # # filter on conditions
-    # df_filt = df_join.filter(cond_rt | cond_ow)
-    # # add round-trip indicator
-    # df_filt = df_filt.withColumn("round_trip", 
-    #     F.when(cond_rt, 1).otherwise(0))
+    # add date columns - convert epoch times to dates (in GMT)
+    df_join = (df_join
+                .withColumn("out_departure_date_gmt",
+                    F.from_unixtime(F.col("out_departure_epoc"), "yyyy-MM-dd"))
+                .withColumn("in_departure_date_gmt",
+                    F.from_unixtime(F.col("in_departure_epoc"), "yyyy-MM-dd"))
+    )
+    # filter on conditions
+    df_filt = df_join.filter(cond_rt | cond_ow)
+    
+    # explode out PTC...
+    df_expl = (df_filt
+        .withColumn("PTC", F.explode("response_PTC"))
+        .withColumn("fare_PTC", F.explode("fare_break_down_by_PTC"))
+        )
+    # so we can filter on ADT
+    df_adt = df_expl.filter(F.col("PTC") == "ADT")
 
-    # df_expl = (df_filt
-    #     .withColumn("PTC", F.explode("responsePTC"))
-    #     .withColumn("farePTC", F.explode("fareBreakDownByPTC"))
-    #     )
-
-    # df_adt = df_expl.filter(F.col("PTC") == "ADT")
-
-    df_agg = (df_join
+    df_agg = (df_adt
         .groupBy(groupby_cols)
         .agg(
-            # F.count("transactionID").alias("solution_counts"),
-            F.countDistinct("shopID").alias("shop_counts"),
-            F.min("farePTC").alias("min_fare")
+            # Solution count is inaccurate, because we've exploded. Besides, 
+            # we don't use. So, omit it
+            # F.count("id").alias("solution_counts"),
+            F.countDistinct("id").alias("shop_counts"),
+            F.min("fare_PTC").alias("min_fare")
         )
     )
     
-    day_df = df_agg.withColumn("searchDt", F.lit(date_str))
+    day_df = df_agg.withColumn("search_date", F.lit(date_str))
     day_df.show(5)
-    # ALT: include date in filename, and change mode to overwrite
-        # with current approach, long-term will need to partition
-        # output data into different folders, eventually (perhaps by month?)
     if include_pcc:
-        num_partitions = 3
+        num_partitions = 12
         save_path = grid_out_dir + "with_pcc/" + date_str
     else:
-        num_partitions = 2
+        num_partitions = 5
         save_path = grid_out_dir + date_str
 
-    day_df.repartition(num_partitions).write.mode("append").parquet(save_path)
+    day_df.repartition(num_partitions).write.mode("overwrite").parquet(save_path)
     
     func_end = datetime.datetime.now()
     elapsed_time = (func_end - func_start).total_seconds() / 60
@@ -221,19 +215,17 @@ def grid_analysis(df_preproc, date_str):
 
 
 def top_market_analysis(df_preproc, date_str):
+    # Note this uses the preprocessed data, which has been filtered for round-trip
+    # plus one-way flights.
     func_start = datetime.datetime.now()
     print("Starting top market counts")
-    save_path = top_markets_out_dir + date_str # + ".csv"
+    save_path = top_markets_out_dir + date_str
+    
     df_agg = (df_preproc
-              .groupBy("outOriginAirport", "outDestinationAirport")
+              .groupBy("out_origin_airport", "out_destination_airport", "trip_type")
               .agg(
-                # note: solution counts includes double-counts from exploding
-                # PTC and fare -- so it represents an over-estimate of the solutions
-                # returned. But since we don't use them, I'm not worrying
-                # about correcting it. Keeping in to give an idea of the number
-                # of solutions generated vs num shops.
-                F.count("transactionID").alias("solution_counts"),
-                F.countDistinct("shopID").alias("num_unique_shops")
+                F.count("id").alias("solution_counts"),
+                F.countDistinct("id").alias("num_unique_shops")
               )
               .orderBy(F.desc("num_unique_shops"))
               .limit(TOP_N)
@@ -284,6 +276,8 @@ def daily_analysis(date):
     print("***DONE PROCESSING DAY: {}***".format(date_str))
     print("")
 
+# ========================
+# MAIN
 
 # load markets we want to analyze
 markets_df = spark.read.csv(top_markets_path, header=True)
