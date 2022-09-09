@@ -1,5 +1,5 @@
 
-# ESTREAM DATA
+# ESTREAMING DATA
 
 # MIDT format
 nohup spark-submit \

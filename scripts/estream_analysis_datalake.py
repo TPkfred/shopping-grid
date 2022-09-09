@@ -32,10 +32,12 @@ import argparse
 
 APP_NAME = "KF-ShoppingGrid"
 data_dir = "/data/estreaming/datalake_1_5/"
+# don't want "encoded" version of top markets, as datalake format contains decoded values
 top_markets_path = "/user/kendra.frederick/lookups/top_markets/top_1000_markets.csv"
-# don't need 'raw' designation, because fields are already decoded
+# don't need 'raw' data/folder designation, because fields are already decoded
 grid_out_dir = "/user/kendra.frederick/shop_vol/v5_datalake/"
-
+# determined off-line / previously
+opt_num_grid_parts = 7
 
 # ========================
 # SET UP SPARK
@@ -126,7 +128,7 @@ groupby_cols = [
     'currency',
 
     # not in source data; these get created/added below
-    'trip_type',
+    'round_trip_ind',
     'out_departure_date_gmt',
     'in_departure_date_gmt'
 ]
@@ -141,17 +143,7 @@ if include_pcc:
 # for round-trip: outOrigin = inDest and outDest = inOrigin 
 cond_rt = (((F.col("out_origin_airport") == F.col("in_destination_airport")) &
          (F.col("out_destination_airport") == F.col("in_origin_airport"))))
-cond_ow = ((F.col("in_origin_airport") == 0) & (F.col("in_destination_airport") == 0))
-
-
-def common_data_preprocessing(df_raw):
-
-    # add round-trip indicator
-    df_mod = df_raw.withColumn("trip_type", 
-        F.when(cond_rt, "rt").otherwise(
-            F.when(cond_ow, "ow").otherwise("other")
-        ))
-    return df_mod
+cond_ow = ((F.col("in_origin_airport").isNull()) & (F.col("in_destination_airport").isNull()))
 
 
 def grid_analysis(df_preproc, date_str):
@@ -169,13 +161,18 @@ def grid_analysis(df_preproc, date_str):
     df_join = df_preproc.join(F.broadcast(markets_df), 
         on="market_key", how="inner")
     
-    # add date columns - convert epoch times to dates (in GMT)
+    # add columns 
+    # - convert epoch times to dates (in GMT)
+    # - round-trip indicator
     df_join = (df_join
                 .withColumn("out_departure_date_gmt",
                     F.from_unixtime(F.col("out_departure_epoc"), "yyyy-MM-dd"))
                 .withColumn("in_departure_date_gmt",
                     F.from_unixtime(F.col("in_departure_epoc"), "yyyy-MM-dd"))
+                .withColumn("round_trip_ind", 
+                    F.when(cond_rt, 1).otherwise(0))
     )
+    
     # filter on conditions
     df_filt = df_join.filter(cond_rt | cond_ow)
     
@@ -184,7 +181,7 @@ def grid_analysis(df_preproc, date_str):
         .withColumn("PTC", F.explode("response_PTC"))
         .withColumn("fare_PTC", F.explode("fare_break_down_by_PTC"))
         )
-    # so we can filter on ADT
+    # ...so we can filter on ADT
     df_adt = df_expl.filter(F.col("PTC") == "ADT")
 
     df_agg = (df_adt
@@ -201,10 +198,10 @@ def grid_analysis(df_preproc, date_str):
     day_df = df_agg.withColumn("search_date", F.lit(date_str))
     day_df.show(5)
     if include_pcc:
-        num_partitions = 12
+        num_partitions = opt_num_grid_parts * 2
         save_path = grid_out_dir + "with_pcc/" + date_str
     else:
-        num_partitions = 5
+        num_partitions = opt_num_grid_parts
         save_path = grid_out_dir + date_str
 
     day_df.repartition(num_partitions).write.mode("overwrite").parquet(save_path)
@@ -214,15 +211,16 @@ def grid_analysis(df_preproc, date_str):
     print("Done with grid analysis. Elasped time: {}".format(elapsed_time))
 
 
-def top_market_analysis(df_preproc, date_str):
-    # Note this uses the preprocessed data, which has been filtered for round-trip
-    # plus one-way flights.
+def top_market_analysis(df_raw, date_str):
+    # Note: we use "raw" data, without any filters. We just want to get a 
+    # crude idea of what's being shopped for. This approach includes 
+    # multi-city  trips, where out origin != in destination, but so be it.
     func_start = datetime.datetime.now()
     print("Starting top market counts")
     save_path = top_markets_out_dir + date_str
     
-    df_agg = (df_preproc
-              .groupBy("out_origin_airport", "out_destination_airport", "trip_type")
+    df_agg = (df_raw
+              .groupBy("out_origin_airport", "out_destination_airport")
               .agg(
                 F.count("id").alias("solution_counts"),
                 F.countDistinct("id").alias("num_unique_shops")
@@ -266,9 +264,8 @@ def daily_analysis(date):
         return None
     print("Done reading raw data")
 
-    df_preproc = common_data_preprocessing(df_raw)
-    grid_analysis(df_preproc, date_str)
-    top_market_analysis(df_preproc, date_str)
+    grid_analysis(df_raw, date_str)
+    top_market_analysis(df_raw, date_str)
 
     loop_end = datetime.datetime.now()
     elapsed_time = (loop_end - loop_start).total_seconds() / 60
