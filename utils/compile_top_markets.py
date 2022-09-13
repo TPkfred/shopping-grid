@@ -74,12 +74,16 @@ dfDays = pd.DataFrame.from_dict(marketCounter, orient='index', columns=['numDays
 
 dfSummary = dfShop.join(dfDays)
 dfSummary.reset_index(inplace=True)
+# Chekc this
 dfSummary.rename(columns={'index':'market'}, inplace=True)
 
 # SAVE LIST OF TOP N
+# Check this - with above
 top1000sum = list(dfSummary.sort_values(by='sumShopCounts', ascending=False)[:TOP_N].index)
 topData = [(x,) for x in top1000sum]
 sparkDfTop = spark.createDataFrame(topData, schema=T.StructType(
     [T.StructField("market_key", T.StringType(), nullable=False)]
                                   ))
 sparkDfTop.write.mode("overwrite").csv(top_markets_path, header=True)
+
+# TODO: also save counts with this .csv

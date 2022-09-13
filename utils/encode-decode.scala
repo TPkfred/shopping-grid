@@ -1,6 +1,5 @@
 // note: must launch spark-shell with jars:
-// 
-spark-shell --jars /projects/apps/cco/estreamingTransformerStream/bin/estreammidtmerger_2.11-1.0.jar
+// spark-shell --jars /projects/apps/cco/estreamingTransformerStream/bin/estreammidtmerger_2.11-1.0.jar
 
 
 // ====================================
@@ -18,7 +17,7 @@ val df2 = (df
     .withColumn("org_dst_array", split(col("market_key"), "-"))
     .withColumn("origin", col("org_dst_array").getItem(0))
     .withColumn("dest", col("org_dst_array").getItem(1))
-    .withColumnRenamed("market_key", "market_key_encoded")
+    .withColumnRenamed("market_key", "market")
     .withColumn("OriginAirport", (stringToNumUDF(col("origin"))))
     .withColumn("DestinationAirport", (stringToNumUDF(col("dest"))))
     .withColumn("market_key", concat_ws("-",
@@ -118,22 +117,43 @@ df2.write.mode("overwrite").parquet(out_dir)
 import com.tvlp.cco.util.Utils.UDFs._
 import com.tvlp.cco.util.Utils.QueryHelpers._
 
-val in_dir = "/user/kendra.frederick/shop_vol/v3/raw"
-val df = spark.read.parquet(in_dir)
+// val in_dir = "/user/kendra.frederick/shop_vol/v3/raw"
 // counts: 1,950,243
 
-val df2 = (df.withColumn("origin_decoded", (numToStringUDF(col("outOriginAirport"))))
-    .withColumn("dest_decoded", (numToStringUDF(col("outDestinationAirport"))))
+// note: in v5, we started saving the data by data folder, so format has become nested
+val in_dir = "/user/kendra.frederick/shop_vol/v5/raw/with_pcc/*/*"
+val df = spark.read.parquet(in_dir)
+// count: 256417600
+
+val df2 = (df.withColumn("origin", (numToStringUDF(col("outOriginAirport"))))
+    .withColumn("destination", (numToStringUDF(col("outDestinationAirport"))))
+    .withColumn("pos_decoded", (numToStringUDF(col("pos"))))
+    .withColumn("currency_decoded", (numToStringUDF(col("currency"))))
+    .withColumn("pcc_decoded", (longNumToStringUDF(col("pcc"))))
     // .withColumn("outMrktCxr_decoded", (numToStringUDF(col("outMrktCxr_single"))))
     // .withColumn("inMrktCxr_decoded", (numToStringUDF(col("inMrktCxr_single"))))
-    // .withColumn("pos_decoded", (numToStringUDF(col("pos"))))
-    // .withColumn("currency_decoded", (numToStringUDF(col("currency"))))
     )
 
-val out_dir = "/user/kendra.frederick/shop_vol/encoded/markets/v2"
+// drop & rename columns
+
+val df3 = (df2
+    .drop("outOriginAirport", "outDestinationAirport", "pos", "currency", "pcc")
+    .withColumn("market", concat_ws("-", col("origin"), col("destination")))
+    .withColumnRenamed("pos_decoded", "pos")
+    .withColumnRenamed("currency_decoded", "currency")
+    .withColumnRenamed("pcc_decoded", "pcc")
+    .select("market", "outDeptDt", "inDeptDt", "searchDt", "round_trip", 
+        "shop_counts", "min_fare",  "pos", 
+        "currency", "pcc", "origin", "destination")
+)
+
+// val out_dir = "/user/kendra.frederick/shop_vol/encoded/markets/v2"
 // df2.repartition(75).write.mode("overwrite").parquet(out_dir)
 // will eventually want to partition by month
-df2.repartition(1).write.mode("overwrite").parquet(out_dir)
+// df2.repartition(1).write.mode("overwrite").parquet(out_dir)
+val out_dir = "/user/kendra.frederick/shop_vol/v5/decoded/with_pcc/"
+df3.write.partitionBy("searchDt").mode("overwrite").parquet(out_dir)
+
 
 
 // ----------------------

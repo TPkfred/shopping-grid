@@ -1,5 +1,5 @@
 
-# ESTREAMING DATA
+# ESTREAM DATA
 
 # MIDT format
 nohup spark-submit \
@@ -17,11 +17,11 @@ nohup spark-submit \
 # datalake format
 nohup spark-submit \
     --driver-memory 30g \
-    --num-executors 10 \
+    --num-executors 15 \
     --executor-memory 20g \
-    --executor-cores 5 \
+    --executor-cores 8 \
     --master yarn \
     --conf spark.pyspark.python=python2 \
     --conf spark.pyspark.driver.python=python2 \
     --conf spark.sql.shuffle.partitions=8 \
-    estream_analysis_datalake.py --run-mode spark-submit --shop-start 2022-09-01 --shop-end 2022-09-01 --include-pcc > out-datalake.txt 2> err-datalake.txt | tee &
+    estream_analysis_datalake.py --run-mode spark-submit --shop-start 2022-09-10 --shop-end 2022-09-11 --include-pcc > out-datalake.txt 2> err-datalake.txt | tee &

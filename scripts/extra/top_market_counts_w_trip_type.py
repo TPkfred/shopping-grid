@@ -4,7 +4,8 @@ Counts "Top" Market from eStreaming datalake data
 - Counts:
     - total number of solutions (i.e. records in estreaming)
     - number of "shops" (i.e. unique shopID)
-- Broken out by market + trip type (one-way (ow), round-trip (rt), or other (other))
+- Broken out by market + trip type:
+    - one-way (ow), round-trip (rt), or other (other)
 - TOP_N saved to file
 """
 
@@ -144,7 +145,7 @@ def top_market_analysis(df_raw, date_str):
         .orderBy(F.desc("total_shop_counts_market"))
         )
 
-    df_agg = df_agg.withColumn("total_shop_counts_rank", F.rank().over(w2))
+    df_agg = df_agg.withColumn("total_shop_counts_rank", F.dense_rank().over(w2))
     df_agg_filt = df_agg.filter(F.col("total_shop_counts_rank") <= TOP_N)
 
     day_df = df_agg_filt.withColumn("date_str", F.lit(date_str))

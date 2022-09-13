@@ -34,10 +34,11 @@ A note on dates, datetime objects, and dates as strings
 # ----------------
 # VARIABLES & ARGUMENTS
 # ----------------
-input_dir = "/user/kendra.frederick/shop_vol/markets/v2_encoded"
-output_dir = "/user/kendra.frederick/shop_grid/results/v2"
+input_dir = "/user/kendra.frederick/shop_vol/v5/decoded/with_pcc/*/*"
+output_dir = "/user/kendra.frederick/shop_grid/results/v5"
 APP_NAME = "KF-ShopGrid"
 
+# TODO: revisit these
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--run-mode",
