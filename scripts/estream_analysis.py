@@ -107,6 +107,10 @@ elif run_mode == "spark-submit":
 else:
     pass
 
+jvm = spark._jvm
+jsc = spark._jsc
+fs = jvm.org.apache.hadoop.fs.FileSystem.get(jsc.hadoopConfiguration())
+
 # ========================
 # ADDITIONAL VARIABLE DEFINTIONS
 
@@ -179,23 +183,10 @@ def grid_analysis(df_preproc, date_str):
     df_join = df_preproc.join(F.broadcast(markets_df), 
         on="market_key", how="inner")
     
-    # # filter on conditions
-    # df_filt = df_join.filter(cond_rt | cond_ow)
-    # # add round-trip indicator
-    # df_filt = df_filt.withColumn("round_trip", 
-    #     F.when(cond_rt, 1).otherwise(0))
-
-    # df_expl = (df_filt
-    #     .withColumn("PTC", F.explode("responsePTC"))
-    #     .withColumn("farePTC", F.explode("fareBreakDownByPTC"))
-    #     )
-
-    # df_adt = df_expl.filter(F.col("PTC") == "ADT")
 
     df_agg = (df_join
         .groupBy(groupby_cols)
         .agg(
-            # F.count("transactionID").alias("solution_counts"),
             F.countDistinct("shopID").alias("shop_counts"),
             F.min("farePTC").alias("min_fare")
         )
@@ -218,34 +209,41 @@ def grid_analysis(df_preproc, date_str):
     func_end = datetime.datetime.now()
     elapsed_time = (func_end - func_start).total_seconds() / 60
     print("Done with grid analysis. Elasped time: {}".format(elapsed_time))
+    print("")
 
 
 def top_market_analysis(df_preproc, date_str):
     func_start = datetime.datetime.now()
     print("Starting top market counts")
     save_path = top_markets_out_dir + date_str # + ".csv"
-    df_agg = (df_preproc
-              .groupBy("outOriginAirport", "outDestinationAirport")
-              .agg(
-                # note: solution counts includes double-counts from exploding
-                # PTC and fare -- so it represents an over-estimate of the solutions
-                # returned. But since we don't use them, I'm not worrying
-                # about correcting it. Keeping in to give an idea of the number
-                # of solutions generated vs num shops.
-                F.count("transactionID").alias("solution_counts"),
-                F.countDistinct("shopID").alias("num_unique_shops")
-              )
-              .orderBy(F.desc("num_unique_shops"))
-              .limit(TOP_N)
-              ).coalesce(1)
-    day_df = df_agg.withColumn("date_str", F.lit(date_str))
-    day_df.show(5)
-    # ignore or overwite here?
-    day_df.write.mode("overwrite").option("header", True).csv(save_path)
-    
-    func_end = datetime.datetime.now()
-    elapsed_time = (func_end - func_start).total_seconds() / 60
-    print("Done with top market counts. Elasped time: {}".format(elapsed_time))
+
+    # First let's check if a .csv already exists. If so, we can
+    # skip processing!
+    if fs.exists(jvm.org.apache.hadoop.fs.Path(save_path)):
+        print(".csv exists. Skipping processing.")
+    else:
+        df_agg = (df_preproc
+                .groupBy("outOriginAirport", "outDestinationAirport")
+                .agg(
+                    # note: solution counts includes double-counts from exploding
+                    # PTC and fare -- so it represents an over-estimate of the solutions
+                    # returned. But since we don't use them, I'm not worrying
+                    # about correcting it. Keeping in to give an idea of the number
+                    # of solutions generated vs num shops.
+                    F.count("transactionID").alias("solution_counts"),
+                    F.countDistinct("shopID").alias("num_unique_shops")
+                )
+                .orderBy(F.desc("num_unique_shops"))
+                .limit(TOP_N)
+                ).coalesce(1)
+        day_df = df_agg.withColumn("date_str", F.lit(date_str))
+        day_df.show(5)
+        # ignore or overwite here?
+        day_df.write.mode("overwrite").option("header", True).csv(save_path)
+        
+        func_end = datetime.datetime.now()
+        elapsed_time = (func_end - func_start).total_seconds() / 60
+        print("Done with top market counts. Elasped time: {}".format(elapsed_time))
 
 
 def daily_analysis(date):
