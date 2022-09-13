@@ -81,7 +81,7 @@ shop_end_str = args.shop_end
 TOP_N = args.top_n
 include_pcc = args.include_pcc
 
-top_markets_out_dir = "/user/kendra.frederick/lookups/top_markets/top_{}_v2/".format(TOP_N)
+top_markets_out_dir = "/user/kendra.frederick/lookups/top_markets/top_{}_dl/".format(TOP_N)
 
 
 start_dt = datetime.datetime.strptime(shop_start_str, "%Y-%m-%d")
