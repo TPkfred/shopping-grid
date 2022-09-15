@@ -1,4 +1,3 @@
-
 """
 Estreaming data source = datalake format
 
@@ -25,6 +24,8 @@ import pyspark.sql.types as T
 
 import datetime
 import argparse
+from math import ceil
+
 
 # ========================
 # VARIABLE DEFINITIONS
@@ -36,8 +37,9 @@ data_dir = "/data/estreaming/datalake_1_5/"
 top_markets_path = "/user/kendra.frederick/lookups/top_markets/top_1000_markets.csv"
 # don't need 'raw' data/folder designation, because fields are already decoded
 grid_out_dir = "/user/kendra.frederick/shop_vol/v5_datalake/"
+top_markets_out_dir = "/user/kendra.frederick/lookups/top_markets/daily_counts/datalake_1_5/"
 # determined off-line / previously
-opt_num_grid_parts = 7
+opt_num_grid_parts = 3
 
 # ========================
 # SET UP SPARK
@@ -61,12 +63,12 @@ parser.add_argument(
     type=str,
     required=True
 )
-parser.add_argument(
-    "--top-n",
-    help="The top N markets to save counts for",
-    type=int,
-    default=10000
-)
+# parser.add_argument(
+#     "--top-n",
+#     help="The top N markets to save counts for",
+#     type=int,
+#     default=10000
+# )
 parser.add_argument(
     "--include-pcc", "-pcc",
     help="Whether to include PCC in the groupby",
@@ -78,10 +80,10 @@ args = parser.parse_args()
 run_mode = args.run_mode
 shop_start_str = args.shop_start
 shop_end_str = args.shop_end
-TOP_N = args.top_n
+# TOP_N = args.top_n
 include_pcc = args.include_pcc
 
-top_markets_out_dir = "/user/kendra.frederick/lookups/top_markets/top_{}_dl/".format(TOP_N)
+# top_markets_out_dir = "/user/kendra.frederick/lookups/top_markets/top_{}_dl/".format(TOP_N)
 
 
 start_dt = datetime.datetime.strptime(shop_start_str, "%Y-%m-%d")
@@ -122,11 +124,9 @@ groupby_cols = [
     'out_origin_city',
     'out_destination_city',
     # NOTE: due to conditions imposed, we don't need in_ fields
-    
-    # for fare analysis
-    'point_of_sale', # is this required for fare analysis?
-    'currency',
-
+    'point_of_sale', # should correspond 1:1 w/ currency, but also
+                     # useful for filtering by country / customer market
+    'currency', # for fare analysis
     # not in source data; these get created/added below
     'round_trip_ind',
     'out_departure_date_gmt',
@@ -134,7 +134,7 @@ groupby_cols = [
 ]
 
 if include_pcc:
-    groupby_cols += ['pcc', 'gds'] # added gds
+    groupby_cols += ['pcc', 'gds']
 
 # ========================
 # HELPER FUNCTIONS & CLAUSES
@@ -198,7 +198,7 @@ def grid_analysis(df_preproc, date_str):
     day_df = df_agg.withColumn("search_date", F.lit(date_str))
     day_df.show(5)
     if include_pcc:
-        num_partitions = opt_num_grid_parts * 2
+        num_partitions = ceil(opt_num_grid_parts * 1.5)
         save_path = grid_out_dir + "with_pcc/" + date_str
     else:
         num_partitions = opt_num_grid_parts
@@ -209,12 +209,13 @@ def grid_analysis(df_preproc, date_str):
     func_end = datetime.datetime.now()
     elapsed_time = (func_end - func_start).total_seconds() / 60
     print("Done with grid analysis. Elasped time: {}".format(elapsed_time))
+    print("")
 
 
 def top_market_analysis(df_raw, date_str):
     # Note: we use "raw" data, without any filters. We just want to get a 
     # crude idea of what's being shopped for. This approach includes 
-    # multi-city  trips, where out origin != in destination, but so be it.
+    # multi-city  trips, where out origin != in destination.
     func_start = datetime.datetime.now()
     print("Starting top market counts")
     save_path = top_markets_out_dir + date_str
@@ -226,16 +227,17 @@ def top_market_analysis(df_raw, date_str):
                 F.countDistinct("id").alias("num_unique_shops")
               )
               .orderBy(F.desc("num_unique_shops"))
-              .limit(TOP_N)
               ).coalesce(1)
     day_df = df_agg.withColumn("date_str", F.lit(date_str))
     day_df.show(5)
-    # ignore or overwite here?
+    # ignore or overwite here? Could also add logic above to check if .csv
+    # already exists and skip processing if it doesn.
     day_df.write.mode("overwrite").option("header", True).csv(save_path)
     
     func_end = datetime.datetime.now()
     elapsed_time = (func_end - func_start).total_seconds() / 60
     print("Done with top market counts. Elasped time: {}".format(elapsed_time))
+    print("")
 
 
 def daily_analysis(date):
@@ -278,10 +280,7 @@ def daily_analysis(date):
 
 # load markets we want to analyze
 markets_df = spark.read.csv(top_markets_path, header=True)
-print("Top markets df:")
-markets_df.show(5)
-print("")
-
+print("Will analyze shopping coverage for {} markets".format(markets_df.count()))
 
 # LOOP OVER SHOPPING DAYS
 num_days = (end_dt - start_dt).days
