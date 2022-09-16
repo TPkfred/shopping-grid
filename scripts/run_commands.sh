@@ -12,6 +12,21 @@ nohup spark-submit \
     /data/16/kendra.frederick/scripts/estream_analysis_datalake.py --run-mode spark-submit --shop-start $date_str --shop-end $date_str --include-pcc >> shop-vol-counts-out.txt 2> shop-vol-counts-err.txt &
 
 
+# Filter on POS, not top markets. Exclude PCC
+date_str="2022-08-25"
+nohup spark-submit \
+    --driver-memory 30g \
+    --num-executors 15 \
+    --executor-memory 20g \
+    --executor-cores 8 \
+    --master yarn \
+    --conf spark.pyspark.python=python2 \
+    --conf spark.pyspark.driver.python=python2 \
+    --conf spark.sql.shuffle.partitions=8 \
+    /home/kendra.frederick/shopping_grid/estream_analysis_pos.py --run-mode spark-submit --shop-start $date_str --shop-end $date_str  >> stdout.txt 2> stderr.txt &
+
+
+
 
 # Grid analysis
 nohup spark-submit \
