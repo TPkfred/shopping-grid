@@ -121,7 +121,9 @@ import com.tvlp.cco.util.Utils.QueryHelpers._
 // counts: 1,950,243
 
 // note: in v5, we started saving the data by data folder, so format has become nested
-val in_dir = "/user/kendra.frederick/shop_vol/v5/raw/with_pcc/*/*"
+// copy from `estream_analysis` script and append "/*". Ex:
+// val in_dir = "/user/kendra.frederick/shop_vol/v6/raw/with_pcc/*"
+
 val df = spark.read.parquet(in_dir)
 // count: 256417600
 

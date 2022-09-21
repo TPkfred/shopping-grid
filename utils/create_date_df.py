@@ -3,15 +3,12 @@ To run:
 
 spark-submit create_date_df.py --shop-start 2022-08-01 --shop-end 2022-08-31 -dtd 120 --missing-dates 2022-08-15 2022-08-16 2022-08-17 2022-08-18 -o /user/kendra.frederick/shop_grid/dates_cross_shop_aug_120dtd
 
-spark-submit create_date_df.py --shop-start 2022-08-01 --shop-end 2022-08-31 -dtd 120 -o /user/kendra.frederick/shop_grid/date_cross_no_missing
+spark-submit create_date_df.py --shop-start 2022-08-25 --shop-end 2022-09-16 -dtd 120 -o /user/kendra.frederick/shop_grid/date_enums/date_cross_2022-09-19
+
 
 """
 import datetime
 import argparse
-
-# import pyspark
-from pyspark.sql import SparkSession
-
 
 # =====================
 # PARSE ARGS & DEFINE VARS
@@ -96,6 +93,8 @@ APP_NAME = "KF-date-enum"
 # spark = SparkSession.builder.config(conf=conf).getOrCreate()
 
 # must run in spark-submit mode
+# import pyspark
+from pyspark.sql import SparkSession
 spark = SparkSession.builder.appName(APP_NAME).getOrCreate()
 
 # =====================
