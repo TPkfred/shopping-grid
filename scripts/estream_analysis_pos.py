@@ -8,8 +8,12 @@ Analyze coverage and lowest fare by market & POS in eStreaming data.
 - Restrictions
     - passenger type = ADT
     - round-trip or one-way (no multi-city itineraries)
-    - top 20 POS determined by previous analysis 
-        - counts in eStreaming data from 8/25 - 9/15
+    - POS = US or IN
+
+Version notes:
+- 09/21/2022
+    - fix index-matching between responsePTC and fareBreakDownByPTC
+    - limits POS's to US and IN to further reduce processing load
 """
 
 import pyspark
@@ -26,8 +30,8 @@ import argparse
 
 APP_NAME = "KF-ShoppingGrid"
 data_dir = "/data/estreaming/midt_1_5/"
-# top_markets_path = "/user/kendra.frederick/lookups/top_markets/top_1000_markets_encoded.csv"
-grid_out_dir = "/user/kendra.frederick/shop_vol/v6/raw/"
+# /raw gets added below
+grid_out_dir = "/user/kendra.frederick/shop_vol/v7/"
 
 
 # ========================
@@ -52,45 +56,32 @@ parser.add_argument(
     type=str,
     required=True
 )
-# parser.add_argument(
-#     "--top-n",
-#     help="The top N markets to save counts for",
-#     type=int,
-#     default=10000
-# )
 parser.add_argument(
     "--include-pcc", "-pcc",
     help="Whether to include PCC in the groupby",
     default=False,
     action="store_true"
 )
-parser.add_argument(
-    "--num-pos", 
-    help="long = top 20 POS; short = top 8",
-    choices=("short", "long"),
-    default="short",
-)
 args = parser.parse_args()
 
 run_mode = args.run_mode
 shop_start_str = args.shop_start
 shop_end_str = args.shop_end
-# TOP_N = args.top_n
 include_pcc = args.include_pcc
 
-# top_markets_out_dir = "/user/kendra.frederick/lookups/top_markets/top_{}_v2/".format(TOP_N)
 
-# both are minus Russia
-if args.num_pos == "long":
-    # top 20
-    pos_list_str = ["US", "GB", "HK", "IN", "DE", "CA", "AU", "FR", "TW", "IT", "ES", "TH", "JP", "KR", "PT", "NL", "PH", "IL", "AE"]
-    pos_list = [353566720, 117571584, 134938624, 151912448, 67436544, 50397184, 18153472, 101842944, 337051648, 152305664, 85131264, 336068608, 168820736, 185729024, 269746176, 235667456, 268959744, 151781376, 17104896]
-else:
-    # being more selective - top 10 POS = 83% of shopping volume 
-    pos_list_str = ["US", "GB", "HK", "IN", "DE", "CA", "AU", "FR"]
-    pos_list = [353566720, 117571584, 134938624, 151912448, 67436544, 50397184, 18153472, 101842944]
+# # both are minus Russia
+# if args.num_pos == "long":
+#     # top 20
+#     pos_list_str = ["US", "GB", "HK", "IN", "DE", "CA", "AU", "FR", "TW", "IT", "ES", "TH", "JP", "KR", "PT", "NL", "PH", "IL", "AE"]
+#     pos_list = [353566720, 117571584, 134938624, 151912448, 67436544, 50397184, 18153472, 101842944, 337051648, 152305664, 85131264, 336068608, 168820736, 185729024, 269746176, 235667456, 268959744, 151781376, 17104896]
+# else:
+#     # being more selective - top 10 POS = 83% of shopping volume 
+#     pos_list_str = ["US", "GB", "HK", "IN", "DE", "CA", "AU", "FR"]
+#     pos_list = [353566720, 117571584, 134938624, 151912448, 67436544, 50397184, 18153472, 101842944]
 
-
+pos_list = [353566720, 151912448]
+pos_list_str = ["US", "IN"]
 
 start_dt = datetime.datetime.strptime(shop_start_str, "%Y-%m-%d")
 end_dt = datetime.datetime.strptime(shop_end_str, "%Y-%m-%d")
@@ -99,6 +90,7 @@ script_start_time = datetime.datetime.now()
 print("{} - Starting script".format(script_start_time.strftime("%Y-%m-%d %H:%M")))
 print("Processing shopping days {} to {} (inclusive)".format(shop_start_str, shop_end_str))
 print("Analyzing these POS's: {}".format(pos_list_str))
+print("Saving coverage & fare analysis to: {}".format(grid_out_dir))
 
 # ========================
 # SETUP SPARK
@@ -112,7 +104,6 @@ if run_mode == "python":
         ('spark.executor.memory', '20g'),
         ('spark.executor.instances', 10),
         ('spark.executor.cores', '5'),
-
         ])
     spark = SparkSession.builder.config(conf=conf).getOrCreate()
 elif run_mode == "spark-submit":
@@ -159,17 +150,23 @@ cond_ow = ((F.col("inOriginAirport") == 0) & (F.col("inDestinationAirport") == 0
 # MAIN
 
 def data_preprocessing(df_raw):
-    # filter on conditions
-    df_filt = df_raw.filter(cond_rt | cond_ow)
+    # filter on trip type (tt)
+    tt_filt = df_raw.filter(cond_rt | cond_ow)
     # add round-trip indicator
-    df_filt = df_filt.withColumn("round_trip", 
+    tt_filt = tt_filt.withColumn("round_trip", 
         F.when(cond_rt, 1).otherwise(0))
-    # explode PTC...
-    df_expl = (df_filt
-        .withColumn("PTC", F.explode("responsePTC"))
-        .withColumn("farePTC", F.explode("fareBreakDownByPTC"))
+    # filter on POS
+        # move this here to restrict data size before we explode
+    pos_filt = tt_filt.filter(F.col("pos").isin(pos_list))
+
+    # explode PTC and fare & match their position
+    df_expl = (pos_filt
+        .select("*",  F.posexplode("responsePTC").alias("ptc_pos", "PTC"))
+        .select("*", F.posexplode("fareBreakDownByPTC").alias("fare_pos", "farePTC"))
+        .filter(F.col("ptc_pos") == F.col("fare_pos"))
+        .drop("ptc_pos", "fare_pos")
         )
-    # so we can filter on ADT
+    # filter on ADT
     df_adt = df_expl.filter(F.col("PTC") == "ADT")
     return df_adt
     
@@ -185,16 +182,8 @@ def grid_analysis(df_preproc, date_str):
             F.col("outOriginAirport").cast(T.StringType()), 
             F.col("outDestinationAirport").cast(T.StringType())))
 
-    # # join with top markets to restrict analysis 
-    # df_join = df_preproc.join(F.broadcast(markets_df), 
-    #     on="market_key", how="inner")
-
-    # filter on POS
-    df_filt = df_preproc.filter(F.col("pos").isin(pos_list))
-    df_filt.count()
-    
     # groupby & agg
-    df_agg = (df_filt
+    df_agg = (df_preproc
         .groupBy(groupby_cols)
         .agg(
             F.countDistinct("shopID").alias("shop_counts"),
@@ -205,13 +194,14 @@ def grid_analysis(df_preproc, date_str):
     day_df = df_agg.withColumn("searchDt", F.lit(date_str))
     day_df.show(5)
     if include_pcc:
-        num_partitions = 3
-        save_path = grid_out_dir + "with_pcc/" + date_str
+        num_partitions = 6
+        save_path = grid_out_dir + "raw_with_pcc/" + date_str
     else:
-        num_partitions = 2
-        save_path = grid_out_dir + date_str
+        num_partitions = 3
+        save_path = grid_out_dir + "raw/" + date_str
 
-    day_df.repartition(num_partitions).write.mode("append").parquet(save_path)
+    # with switch to partitioning data by day, write mode can be overwrite (not append)
+    day_df.repartition(num_partitions).write.mode("overwrite").parquet(save_path)
     
     func_end = datetime.datetime.now()
     elapsed_time = (func_end - func_start).total_seconds() / 60
