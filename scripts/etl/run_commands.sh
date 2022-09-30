@@ -13,7 +13,7 @@ nohup spark-submit \
 
 
 # Filter on POS, not top markets. Exclude PCC
-date_str="2022-08-25"
+    # remove shuffle partitions conf
 nohup spark-submit \
     --driver-memory 30g \
     --num-executors 15 \
@@ -22,8 +22,7 @@ nohup spark-submit \
     --master yarn \
     --conf spark.pyspark.python=python2 \
     --conf spark.pyspark.driver.python=python2 \
-    --conf spark.sql.shuffle.partitions=8 \
-    /home/kendra.frederick/shopping_grid/estream_analysis_pos.py --run-mode spark-submit --shop-start $date_str --shop-end $date_str  >> stdout.txt 2> stderr.txt &
+    /home/kendra.frederick/shopping_grid/estream_analysis_pos.py --run-mode spark-submit --shop-start 2022-08-30 --shop-end 2022-09-20 >> stdout.txt 2> stderr.txt &
 
 
 
@@ -39,3 +38,15 @@ nohup spark-submit \
     --conf spark.pyspark.driver.python=python2 \
     --conf spark.sql.shuffle.partitions=8 \
     grid_calc.py --run-mode spark-submit --month 10 --shop-start 2022-08-08 --shop-end 2022-08-14 -n 10 --process-mode process-only > kf-shop-grid-out.txt 2> kf-shop-grid-err.txt | tee &
+
+
+# Analysis
+nohup spark-submit \
+    --driver-memory 30g \
+    --num-executors 15 \
+    --executor-memory 20g \
+    --executor-cores 8 \
+    --master yarn \
+    --conf spark.pyspark.python=python2 \
+    --conf spark.pyspark.driver.python=python2 \
+    /home/kendra.frederick/shopping_grid/zero_min_fares.py > analysis_out.txt 2> analysis_err.txt &
