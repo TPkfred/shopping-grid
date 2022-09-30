@@ -185,3 +185,28 @@ def line_plot_coverage_vs_dtd(pos,
     if save_fig:
         file_name = f"{pos}-line_{filename_extra}"
         plt.savefig(out_dir + file_name + ".png", format="png")
+
+
+
+dow_dict = dict(zip(range(7), ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]))
+
+def heatmap_min_fare(pdf_to_plot, first_day, num_days=7):
+    """
+    pdf_to_plot (pandas DataFrame): data to plot
+    first_day (datetime): first search/shopping day to plot
+    num_days (int): number of search/shopping days to plot.
+        Default=7.
+    """
+
+    for i in range(num_days):
+        search_dt = first_day + datetime.timedelta(days=i)
+        one_search_day = pdf_to_plot[pdf_to_plot['searchDt_dt'] == search_dt]
+        pvt_data = one_search_day.pivot(index="stay_duration", columns="outDeptDt", values="min_fare",)
+        plt.figure(figsize=(10,2)) # w x h
+        sns.heatmap(pvt_data, cmap='viridis', square=True,
+                cbar_kws={'label': 'lowest fare (USD)',
+                            'shrink': 0.5,
+                            }
+                );
+        dow = dow_dict[datetime.date.weekday(search_dt)]
+        plt.title(f"Search date: {search_dt.strftime('%Y-%m-%d')} ({dow})")
