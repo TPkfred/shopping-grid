@@ -112,50 +112,6 @@ val out_dir = "/user/kendra.frederick/min_fare/v5_encoded/"
 df2.write.mode("overwrite").parquet(out_dir)
 
 
-// ====================================
-// ESTREAM
-import com.tvlp.cco.util.Utils.UDFs._
-import com.tvlp.cco.util.Utils.QueryHelpers._
-
-// val in_dir = "/user/kendra.frederick/shop_vol/v3/raw"
-// counts: 1,950,243
-
-// note: in v5, we started saving the data by data folder, so format has become nested
-val in_dir = "/user/kendra.frederick/shop_vol/v5/raw/with_pcc/*/*"
-val df = spark.read.parquet(in_dir)
-// count: 256417600
-
-val df2 = (df.withColumn("origin", (numToStringUDF(col("outOriginAirport"))))
-    .withColumn("destination", (numToStringUDF(col("outDestinationAirport"))))
-    .withColumn("pos_decoded", (numToStringUDF(col("pos"))))
-    .withColumn("currency_decoded", (numToStringUDF(col("currency"))))
-    .withColumn("pcc_decoded", (longNumToStringUDF(col("pcc"))))
-    // .withColumn("outMrktCxr_decoded", (numToStringUDF(col("outMrktCxr_single"))))
-    // .withColumn("inMrktCxr_decoded", (numToStringUDF(col("inMrktCxr_single"))))
-    )
-
-// drop & rename columns
-
-val df3 = (df2
-    .drop("outOriginAirport", "outDestinationAirport", "pos", "currency", "pcc")
-    .withColumn("market", concat_ws("-", col("origin"), col("destination")))
-    .withColumnRenamed("pos_decoded", "pos")
-    .withColumnRenamed("currency_decoded", "currency")
-    .withColumnRenamed("pcc_decoded", "pcc")
-    .select("market", "outDeptDt", "inDeptDt", "searchDt", "round_trip", 
-        "shop_counts", "min_fare",  "pos", 
-        "currency", "pcc", "origin", "destination")
-)
-
-// val out_dir = "/user/kendra.frederick/shop_vol/encoded/markets/v2"
-// df2.repartition(75).write.mode("overwrite").parquet(out_dir)
-// will eventually want to partition by month
-// df2.repartition(1).write.mode("overwrite").parquet(out_dir)
-val out_dir = "/user/kendra.frederick/shop_vol/v5/decoded/with_pcc/"
-df3.write.partitionBy("searchDt").mode("overwrite").parquet(out_dir)
-
-
-
 // ----------------------
 // SHOPPING GRID - VOL COUNTS - MARKETS
 import com.tvlp.cco.util.Utils.UDFs._
@@ -186,4 +142,57 @@ val out_dir = "/user/kendra.frederick/shop_vol/encoded/markets/v2"
 // df2.repartition(75).write.mode("overwrite").parquet(out_dir)
 // will eventually want to partition by month
 df3.repartition(1).write.mode("overwrite").parquet(out_dir)
+
+
+// ====================================
+// ESTREAM
+import com.tvlp.cco.util.Utils.UDFs._
+import com.tvlp.cco.util.Utils.QueryHelpers._
+
+
+// note: in v5, we started saving the data by data folder, so format has 
+// become nested
+// Copy output dir from `estream_analysis` script and append "/*". Ex:
+// val in_dir = "/user/kendra.frederick/shop_vol/v6/raw/with_pcc/*"
+val input_dir = "/user/kendra.frederick/shop_vol/v7/raw/*"
+
+// ** Be sure to update out_dir below to match
+
+val df = spark.read.parquet(input_dir)
+// count: 256417600
+
+val df2 = (df.withColumn("origin", (numToStringUDF(col("outOriginAirport"))))
+    .withColumn("destination", (numToStringUDF(col("outDestinationAirport"))))
+    .withColumn("pos_decoded", (numToStringUDF(col("pos"))))
+    .withColumn("currency_decoded", (numToStringUDF(col("currency"))))
+    // .withColumn("pcc_decoded", (longNumToStringUDF(col("pcc"))))
+    // .withColumn("outMrktCxr_decoded", (numToStringUDF(col("outMrktCxr_single"))))
+    // .withColumn("inMrktCxr_decoded", (numToStringUDF(col("inMrktCxr_single"))))
+    )
+
+// drop & rename columns
+
+val df3 = (df2
+    .drop("outOriginAirport", "outDestinationAirport", "pos", "currency", "pcc")
+    .withColumn("market", concat_ws("-", col("origin"), col("destination")))
+    .withColumnRenamed("pos_decoded", "pos")
+    .withColumnRenamed("currency_decoded", "currency")
+    // .withColumnRenamed("pcc_decoded", "pcc")
+    .select("market",  "origin", "destination", "round_trip",
+        "pos", "currency", 
+        "outDeptDt", "inDeptDt", "searchDt", 
+        "shop_counts", "min_fare"
+        // , "pcc"
+       )
+)
+
+// val out_dir = "/user/kendra.frederick/shop_vol/encoded/markets/v2"
+// df2.repartition(75).write.mode("overwrite").parquet(out_dir)
+// will eventually want to partition by month
+// df2.repartition(1).write.mode("overwrite").parquet(out_dir)
+val out_dir = "/user/kendra.frederick/shop_vol/v7/decoded/"
+df3.write.partitionBy("searchDt").mode("overwrite").parquet(out_dir)
+
+
+
 
