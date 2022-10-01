@@ -1,256 +1,137 @@
-holidays = [
-    datetime.date(2022,9,5), # Labor Day
-    datetime.date(2022,11,24), # Thanksgiving
-    datetime.date(2022,11,25), # Thanksgiving
-    datetime.date(2022,12,23), # Christmas Eve Obs
-    datetime.date(2022,12,26), # Christmas Obs
-]
+# see utils/preprocess.Preprocess
 
-class Preprocess:
-    shifted_features_dict = {
-            # shift search day -1
-            "min_fare_prev_search_day": {
-                'sort_col': 'searchDt',
-                'groupby_cols': ['outDeptDt', 'inDeptDt']
-            },
-            # shift departure day +/- 1
-            "min_fare_prev_dept_day": {
-                'sort_col': 'outDeptDt',
-                'groupby_cols': ['inDeptDt', 'searchDt']
-            },
-            "min_fare_next_dept_day": {
-                'sort_col': 'outDeptDt',
-                'groupby_cols': ['inDeptDt', 'searchDt'],
-                'shift': -1
-            },
-            # shift return day +/- 1
-            "min_fare_prev_return_day": {
-                'sort_col': 'inDeptDt',
-                'groupby_cols': ['outDeptDt', 'searchDt'],
-            },
-            "min_fare_next_return_day": {
-                'sort_col': 'inDeptDt',
-                'groupby_cols': ['outDeptDt', 'searchDt'],
-                'shift': -1
-            }
-        }
+# LAX-EWR
 
-    def __init__(self, 
-                 test_size,
-                 target_col="min_fare",
-                 trail_avg_window=3,
-                 fill_na_strategy='avg',
-                 clip_first_search_day=True,
-                 holidays=holidays,
-                 seed=19,
-                 *args):
-        """
-        params:
-        ----------
-        trailing_avg_window (int): window size for trailing average
-            used as secondary method for fillna of shifted features
-        
-        fill_na_strategy(str, ('avg', <col>)): strategy to take
-            for filling na for trailing avg. 'avg' = take average
-            of all shifted features. <col> = specify column name
-            of shifted feature to use.
-        """
-        self.args = args
-        self.test_size = test_size
-        self.target_col = target_col
-        self.seed = seed
-        self.feature_list = []
-        self.trail_avg_window = trail_avg_window
-        self.fill_na_strategy = fill_na_strategy
-        self.clip_first_search_day = clip_first_search_day
-        self.holidays = holidays
-        self._masking = False
-        
-        
-    def mask(self, X, y):
-        X_train, X_test, y_train, self.y_test = train_test_split(
-            X, y, test_size=self.test_size, random_state=self.seed)
-        train_pdf = pd.concat([X_train, y_train], axis=1)
-        train_pdf["train_test"] = "train"
-        X_test["train_test"] = "test"
-        mask_df = pd.concat([train_pdf, X_test], axis=0, sort=False)
-        self.mask_df = mask_df
-        self._masking = True
-        # return mask_df
-    
-    def feature_eng_shifted(self, df):
-        # Don't hard-code which df to operate on, because order of feature
-        # engineering doesn't matter
-        assert self._masking, "You should only engineers features after masking"
-        for feature_name, kwargs in self.shifted_features_dict.items():
-            df[feature_name] = (df
-                            .sort_values(by=kwargs['sort_col'])
-                            .groupby(kwargs['groupby_cols'])[self.target_col]
-                            # could also supply fillna value here, if it were simple
-                            .shift(kwargs.get("shift", 1)) 
-                        )
-            self.feature_list.append(feature_name)
-        return df
-    
-    def feature_eng_trailing_avg(self, df):
-        # don't hard-code which df, because 
-        assert self._masking, "You should only engineers features after masking"
-        
-        df['trail_avg'] = (df
-                .sort_values(by="searchDt")
-                .groupby(["days_til_dept", "stay_duration"])
-                [self.target_col]
-                .transform(lambda x: x.rolling(
-                    window=self.trail_avg_window, min_periods=1).mean())
-               )
-        self.feature_list.append("trail_avg")
-        
-        return df
-    
-    def feature_eng_fillna(self, df):
-        assert 'trail_avg' in df.columns, "Trailing average must be computed before filling na"
-        # as a first pass, take average across shifted features 
-        # and use this to fillna
-        shifted_feature_cols = list(self.shifted_features_dict.keys())
-        for col in shifted_feature_cols:
-            df[col] = np.where(df[col].isna(),
-                               np.nanmean(df[shifted_feature_cols], axis=1),
-                               df[col])
 
-        # for the few rows where all shifted features are NaN, use 
-        # the trailing average of min_fare to fillna
-        for col in shifted_feature_cols:
-            df[col] = np.where(df[col].isna(), 
-                                df['trail_avg'],
-                                df[col])
-        
-        # finally, where trail_avg is null, use shifted features
-        if self.fill_na_strategy == 'avg':
-            # take average of all shifted features
-            fillna_val = np.nanmean(df[shifted_feature_cols], axis=1)
-        else:
-            # use column specified
-            fillna_val = df[self.fill_na_strategy]
-            
-        df['trail_avg'] = np.where(df['trail_avg'].isna(),
-                                   fillna_val,
-                                   df['trail_avg']
-                                  )
-        return df
     
-    
-    def feature_eng_dow_holidays(self, df):
-        # add "is weekend or holiday" ("is_wkehol") indicators
-        df['dept_dt_is_wkehol'] = df['outDeptDt_dt'].apply(
-            lambda d: ((datetime.date.weekday(d) >= 5) | (d in self.holidays)))
+# =============================
+# RANDOM FOREST REGRESSOR
+# =============================
 
-        df['dept_dt_prior_is_wkehol'] = df['outDeptDt_dt'].apply(
-            lambda d: (datetime.date.weekday(d - datetime.timedelta(days=1)) >= 5)
-                        | (d - datetime.timedelta(days=1) in self.holidays))
-        df['dept_dt_next_is_wkehol'] = df['outDeptDt_dt'].apply(
-            lambda d: (datetime.date.weekday(d + datetime.timedelta(days=1)) >= 5)
-                        | (d + datetime.timedelta(days=1) in self.holidays))
-
-        df['return_dt_is_wkehol'] = df['inDeptDt_dt'].apply(
-            lambda d: (datetime.date.weekday(d) >= 5) | (d in self.holidays))
-        df['return_dt_prior_is_wkehol'] = df['inDeptDt_dt'].apply(
-            lambda d: (datetime.date.weekday(d - datetime.timedelta(days=1)) >= 5)
-                        | (d - datetime.timedelta(days=1) in self.holidays))
-        df['return_dt_next_is_wkehol'] = df['inDeptDt_dt'].apply(
-            lambda d: (datetime.date.weekday(d + datetime.timedelta(days=1)) >= 5)
-                        | (d + datetime.timedelta(days=1) in self.holidays))
-        
-        self.feature_list.extend([
-            'dept_dt_is_wkehol', 'dept_dt_prior_is_wkehol', 'dept_dt_next_is_wkehol',
-            'return_dt_is_wkehol', 'return_dt_prior_is_wkehol', 'return_dt_next_is_wkehol'
-        ])
-        
-        return df
-
-    def resplit(self, df):
-        """Re-split data into train & test.
-        
-        Also optionally clips off first search day of data.
-        Intended to be run after all feature engineering steps.
-        """
-            
-        train_df = df[df['train_test'] == 'train']
-        test_df = df[df['train_test'] == 'test']
-        
-        if self.clip_first_search_day:
-            # can't just clip the full df -- need to update y_test
-            first_search_dt = df['searchDt_dt'].min()
-            # pull y_test back into test_df to associate it with search dates
-            test_df[self.target_col] = self.y_test
-            # filter test_df on search date
-            test_df = test_df[test_df['searchDt_dt'] > first_search_dt]
-            # update y_test
-            self.y_test = test_df[self.target_col]
-            
-            train_df = train_df[train_df['searchDt_dt'] > first_search_dt]
-            
-        X_train = train_df.drop(columns=[self.target_col])
-        y_train = train_df[self.target_col]
-        X_test = test_df.drop(columns=[self.target_col])
-        return X_train, X_test, y_train
-    
-    def processs(self, X, y):
-        self.mask(X, y)
-        eng_df = self.feature_eng_shifted(self.mask_df)
-        eng_df = self.feature_eng_trailing_avg(eng_df)
-        eng_df = self.feature_eng_dow_holidays(eng_df)
-        fillna_df = self.feature_eng_fillna(eng_df)
-        X_train, X_test, y_train = self.resplit(fillna_df)
-        return X_train, X_test, y_train, self.y_test
-    
-# USE OF CLASS    
-results = []
-
-## INSIDE CV LOOP
+# INSIDE CV LOOP
+# ------------------------
+# (**USE OF CLASS**)
 preproc = Preprocess(test_size=0.1)
-X_train1, X_test1, y_train1, y_test1 = preproc.processs(X_train, y_train)
+# pp for "preprocessed"
+X_train_pp, X_test_pp, y_train_pp, y_test_pp = preproc.processs(X_train, y_train)
+
+
 
 features = [
     'days_til_dept', 'stay_duration',
-#     'dept_dt_is_wkehol', 'dept_dt_prior_is_wkehol',
-#        'dept_dt_next_is_wkehol', 'return_dt_is_wkehol',
-#        'return_dt_prior_is_wkehol', 'return_dt_next_is_wkehol',
+    'dept_dt_is_wkehol', 'dept_dt_prior_is_wkehol',
+       'dept_dt_next_is_wkehol', 'return_dt_is_wkehol',
+       'return_dt_prior_is_wkehol', 'return_dt_next_is_wkehol',
        'min_fare_prev_search_day', 'min_fare_prev_dept_day',
        'min_fare_next_dept_day', 'min_fare_prev_return_day',
        'min_fare_next_return_day',
        'trail_avg'
 ]
-
 # alt:
 # features = preproc.feature_list
 
+results = []
+
 rfr = RandomForestRegressor()
-rfr.fit(X_train1[features], y_train1)
-y_pred = rfr.predict(X_test1[features])
-train_pred = rfr.predict(X_train1[features])
+rfr.fit(X_train_pp[features], y_train_pp)
+y_pred = rfr.predict(X_test_pp[features])
+train_pred = rfr.predict(X_train_pp[features])
 
 results.append({
-    "test_rmse": math.sqrt(mean_squared_error(y_test1, y_pred)),
-    "test_mae": mean_absolute_error(y_test1, y_pred),
-    "test_r2": r2_score(y_test1, y_pred),
-    "train_rmse": math.sqrt(mean_squared_error(y_train1, train_pred)),
-    "train_r2": r2_score(y_train1, train_pred),
-    "train_mae": mean_absolute_error(y_train1, train_pred),
+    "algo": "rfr",
+    "test_rmse": math.sqrt(mean_squared_error(y_test_pp, y_pred)),
+    "test_mae": mean_absolute_error(y_test_pp, y_pred),
+    "test_r2": r2_score(y_test_pp, y_pred),
+    "train_rmse": math.sqrt(mean_squared_error(y_train_pp, train_pred)),
+    "train_r2": r2_score(y_train_pp, train_pred),
+    "train_mae": mean_absolute_error(y_train_pp, train_pred),
     "feature_importances": rfr.feature_importances_
     })
 
-## END CV LOOP
+# END CV LOOP
+# ----------------------
 
-# plotting feature importance
+# bar chart - feature importance
 xs = range(len(features))
 plt.bar(xs, rfr.feature_importances_)
 plt.xticks(xs, features, rotation=90);
 plt.ylabel("feature importance");
 
 
+# tuning hyperparam
+model = RandomForestRegressor(
+    oob_score=True,
+    bootstrap=True,
+    n_estimators=200, # set high for now; tune after other params chosen
+    n_jobs=-1
+)
 
+params = {
+    'max_features' : [None, 'log2', 'sqrt'],
+    'max_depth': [None, 3, 5, 7, 10],
+#     'min_samples_split': stats.expon(scale= )#np.logspace(-5, -1, 10),
+    'min_samples_leaf': stats.expon(scale=0.1),
+    'criterion': ['mse', 'mae'],
+#     'min_impurity_decrease': stats.expon(scale=0.1),
+#     'max_samples': [0.75, 0.9, 0.95, 1], # not available in v 0.20
+          }
+
+rand_cv = RandomizedSearchCV(model, params, n_iter=20, n_jobs=-1, cv=3, 
+                             iid=False, # will be removed in 0.24
+                             return_train_score=True,
+                             scoring=['r2', 'neg_mean_absolute_error'],
+                             refit='neg_mean_absolute_error'
+                            )
+rand_cv.fit(X_train_pp[features], y_train_pp)
+est = rand_cv.best_estimator_
+
+rand_cv.best_score_
+rand_cv.best_params_
+
+y_pred = rand_cv.predict(X_test_pp[features])
+train_pred = rand_cv.predict(X_train_pp[features])
+
+results.append({
+            "algo": "TunedRFR_mae",
+            "fold": i,
+            "best_params": rand_cv.best_params_,
+            "best_score": rand_cv.best_score_,
+#             "test_rmse": math.sqrt(mean_squared_error(y_test_pp, y_pred)),
+            "test_r2": r2_score(y_test_pp, y_pred),
+            "test_mape": mean_absolute_percentage_error(y_test_pp, y_pred),
+            "test_mae": mean_absolute_error(y_test_pp, y_pred),
+            "test_mdae": median_absolute_error(y_test_pp, y_pred),
+#             "train_rmse": math.sqrt(mean_squared_error(y_train_pp, train_pred)),
+            "train_r2": r2_score(y_train_pp, train_pred),
+            "train_mape": mean_absolute_percentage_error(y_train_pp, train_pred),
+            "train_mae": mean_absolute_error(y_train_pp, train_pred),
+            "train_mdae": median_absolute_error(y_train_pp, train_pred),
+            "feature_importances": est.feature_importances_
+            })
+
+# =============================
 # LINEAR REGRESSION
-# TODO: pull over rest of code (feature list definitions)
+# =============================
+
+features_to_scale = [
+    'min_fare_prev_search_day',
+    'min_fare_prev_dept_day',
+    'min_fare_next_dept_day',
+    'min_fare_prev_return_day',
+    'min_fare_next_return_day',
+    'trail_avg'
+]
+
+features_to_norm = ['days_til_dept', 'stay_duration']
+
+feature_to_keep_asis = [
+ 'dept_dt_is_wkehol',
+ 'dept_dt_prior_is_wkehol',
+ 'dept_dt_next_is_wkehol',
+ 'return_dt_is_wkehol',
+ 'return_dt_prior_is_wkehol',
+ 'return_dt_next_is_wkehol'
+]
 
 preproc = Preprocess(test_size=0.1)
 # pp for "preprocessed"
@@ -264,13 +145,12 @@ final_processor = make_column_transformer(
 #     verbose_feature_names_out=False # our version of sklearn is OLD
 )
 
-alphas = np.logspace(-3, 3, 10)
 model = make_pipeline(
     final_processor,
     TransformedTargetRegressor(
         regressor=ElasticNetCV(
             l1_ratio=[.1, .5, .7, .9, .95, .99, 1],
-            alphas=alphas,
+            alphas=np.logspace(-3, 3, 10),
             cv=3,
         ),
         func=np.log,
@@ -282,16 +162,69 @@ model.fit(X_train_pp, y_train_pp)
 y_pred = model.predict(X_test_pp)
 train_pred = model.predict(X_train_pp)
 
-# tx_list = model.steps[:-1][0][1].transformers
-# features_used = [y for x in tx_list for y in x[2]]
-
 results.append({
-    "algo": "ElasticCV",
-    "test_rmse": math.sqrt(mean_squared_error(y_test_pp, y_pred)),
-    "test_mae": mean_absolute_error(y_test_pp, y_pred),
-    "test_r2": r2_score(y_test_pp, y_pred),
-    "train_rmse": math.sqrt(mean_squared_error(y_train_pp, train_pred)),
-    "train_r2": r2_score(y_train_pp, train_pred),
-    "train_mae": mean_absolute_error(y_train_pp, train_pred),
-    "feature_importances":  model.steps[-1][1].regressor_.coef_
-    })
+            "algo": "ElasticCV",
+            "fold": i,
+            "best_params": {
+                "alpha": lr_model.steps[-1][1].regressor_.alpha_,
+                "l1_ratio": lr_model.steps[-1][1].regressor_.l1_ratio_
+            },
+            "best_score": "n/a",
+#             "test_rmse": math.sqrt(mean_squared_error(y_test_pp, y_pred)),
+            "test_r2": r2_score(y_test_pp, y_pred),
+            "test_mape": mean_absolute_percentage_error(y_test_pp, y_pred),
+            "test_mae": mean_absolute_error(y_test_pp, y_pred),
+            "test_mdae": median_absolute_error(y_test_pp, y_pred),
+#             "train_rmse": math.sqrt(mean_squared_error(y_train_pp, train_pred)),
+            "train_r2": r2_score(y_train_pp, train_pred),
+            "train_mape": mean_absolute_percentage_error(y_train_pp, train_pred),
+            "train_mae": mean_absolute_error(y_train_pp, train_pred),
+            "train_mdae": median_absolute_error(y_train_pp, train_pred),
+            "feature_importances":  lr_model.steps[-1][1].regressor_.coef_
+        })
+
+
+# getting the params used in ElasticNet model:
+model.steps[-1][1].regressor_.alpha_
+model.steps[-1][1].regressor_.l1_ratio_
+
+
+# bar chart - coefficients
+tx_list = model.steps[:-1][0][1].transformers
+features_used = [y for x in tx_list for y in x[2]]
+
+coef_data = model.steps[-1][1].regressor_.coef_
+
+ys = range(len(coef_data))
+plt.figure(figsize=(5,8))
+h = 0.8
+plt.barh(ys, coef_data, height=h)
+plt.vlines(0, ys.start-h, ys.stop-1+h, color='grey')
+plt.yticks(ys, features_used);
+plt.title("Coefficient Importance - ElasticNetCV");
+
+
+# GENERIC PLOTS
+# scatter of y-true vs y-pred
+
+plt.scatter(y_test_pp, y_pred);
+min_val = min(y_test_pp)
+max_val = max(y_test_pp)
+plt.plot([min_val, max_val], [min_val, max_val], color='r', ls='--');
+plt.xlabel("predicted")
+plt.ylabel("actual")
+plt.title("ElasticNetCV");
+
+
+# bar chart - comparing algo's
+results_df = pd.DataFrame.from_dict(results)
+xs = np.arange(len(results_df))
+w=0.4
+plt.bar(xs-(w/2), results_df['test_mae'], width=w, color='royalblue', label='test mae')
+plt.bar(xs+(w/2), results_df['train_mae'], width=w, color='lightblue', label='train_mae');
+plt.xticks(xs, results_df['algo'])
+plt.legend();
+plt.ylabel("MAE min fare ($USD)");
+
+
+# heatmap looking at correlation of features (*after fillna•) w/ target

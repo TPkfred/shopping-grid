@@ -3,17 +3,10 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
+from utils import Configs
 
-holidays = [
-    datetime.date(2022,9,5), # Labor Day
-    datetime.date(2022,11,23), # Day before Thanksgiving
-    datetime.date(2022,11,24), # Thanksgiving
-    datetime.date(2022,11,25), # Thanksgiving
-    datetime.date(2022,12,23), # Christmas Eve Obs
-    datetime.date(2022,12,24), # Christmas Eve
-    datetime.date(2022,12,25), # Christmas
-    datetime.date(2022,12,26), # Christmas Obs
-]
+holidays = Configs().global_configs['date_time_params']['holidays']
+
 
 class Preprocess:
     shifted_features_dict = {
@@ -170,7 +163,16 @@ class Preprocess:
                                    fillna_val,
                                    df['trail_avg']
                                   )
-        return df
+        
+        # drop any remaining NaN's for now
+        df_drop = df.dropna(subset=self.feature_list)
+        
+        x, y = len(df_drop), len(df)
+        if x != y:
+            print(f"Dropping {y-x} na rows")
+        
+        return df_drop
+    
     
     def extract_dow(self, df):
         df['dept_dt_dow'] = df['outDeptDt_dt'].apply(

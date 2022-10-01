@@ -44,3 +44,8 @@ kf_script_dir=/data/16/kendra.frederick/scripts
 
 ## utility code
 See `/utils` folder for description of code therein. 
+
+# Modeling
+
+- Be sure to keep `search_start` and `search_end` up to date in modeling/global-configs.yaml.
+    - Eventually, I imagine data agg script would run nightly, and end could be set to yesterday.
