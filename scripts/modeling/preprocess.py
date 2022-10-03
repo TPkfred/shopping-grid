@@ -225,7 +225,8 @@ class Preprocess:
             # can't just clip the full df -- need to update y_test as well
             
             # pull y_test back into test_df to associate it with search dates
-            test_df[self.target_col] = self.y_test
+            test_df.loc[:, self.target_col] = self.y_test
+
             # filter test_df on search date
             test_df = test_df[test_df['searchDt_dt'] > self.first_search_dt]
             # update y_test
