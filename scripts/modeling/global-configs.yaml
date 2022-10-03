@@ -1,0 +1,41 @@
+date_time_params:
+  min_days_til_dept: 1 # same-day searches yield poor coverage for some markets
+  max_days_til_dept: 60
+  los_start: 1
+  los_end: 7 # the first 7 of the 7x7 grid
+  search_start: 2022-08-30
+  search_end: 2022-09-20
+  holidays: [ # includes common travel days
+    2022-09-05, # Labor Day
+    2022-11-23, # Day before Thanksgiving
+    2022-11-24, # Thanksgiving
+    2022-11-25, # Day after Thanksgiving
+    2022-12-23, # Christmas Eve Obs
+    2022-12-24, # Christmas Eve
+    2022-12-25, # Christmas
+    2022-12-26, # Christmas Obs
+  ]
+
+data_params:
+  count_llim: 15
+  target_col: "min_fare"
+  seed: 19
+  test_frac: 0.1
+
+model_params:
+  elastic_net_cv:
+    l1_ratios: [.1, .5, .7, .9, .95, .99, 1]
+    alphas: np.logspace(-3, 3, 10)
+  elastic_net: 
+    l1_ratio: 0.1
+    alpha: 0.001
+  random_forest_regressor:
+    min_samples_leaf: 0.005
+    max_depth: 7
+    criterion: 'absolute_error'
+    oob_score: True
+    bootstrap: True
+    n_estimators: 200 # set high for now; tune later
+  outcome:
+    percent_error_threshold: 0.01
+  
