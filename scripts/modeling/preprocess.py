@@ -86,13 +86,13 @@ class Preprocess:
         mask_df = pd.concat([train_pdf, X_test], axis=0, sort=False)
         self.mask_df = mask_df
         self._masking = True
-        # return mask_df
     
     def mask_only(self, X_train, X_test, y_train, y_test):
         """Mask y_test in recombined dataset.
         
         Use if X & y have already been train-test split, such as 
-        during cross-validation."""
+        during cross-validation.
+        """
         self.y_test = y_test
         train_pdf = pd.concat([X_train, y_train], axis=1)
         train_pdf["train_test"] = "train"
@@ -124,7 +124,11 @@ class Preprocess:
 
         df['trail_avg'] = (df
                 .sort_values(by="searchDt")
-                # .groupby(["days_til_dept", "stay_duration"])
+                # this is going to be very restrictive. We won't have a lot of data.
+                # i.e. will only have a datapoint for a given combination of dtd +
+                # dept DOW once every 7 shopping days. 
+                # Also need to check that this isn't leaky -- confirm that current
+                # data point isn't included
                 .groupby(["days_til_dept", "dept_dt_dow", "return_dt_dow"])
                 [self.target_col]
                 .transform(lambda x: x.rolling(

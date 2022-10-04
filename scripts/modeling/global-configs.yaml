@@ -1,3 +1,7 @@
+general:
+  stdout_log_level: 20
+  file_log_level: 10
+
 date_time_params:
   min_days_til_dept: 1 # same-day searches yield poor coverage for some markets
   max_days_til_dept: 60
@@ -21,6 +25,11 @@ data_params:
   target_col: "min_fare"
   seed: 19
   test_frac: 0.1
+
+generic_market_config:
+  fare_ulim_percentile: 99.8
+  fare_llim_percentile: 0.04
+
 
 model_params:
   elastic_net_cv:

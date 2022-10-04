@@ -72,11 +72,13 @@ parser.add_argument(
 args = parser.parse_args()
 
 input_dir = args.input_dir
-output_dir = args.output_dir
+parent_output_dir = args.output_dir
 market = args.market
 mask_frac = args.mask_fraction
 tune_lr = args.tune_lr
 
+output_dir = os.path.join(parent_output_dir, market)
+os.makedirs(output_dir, exist_ok=True)
 
 Configs = u.Configs()
 gc = Configs.global_configs
@@ -107,7 +109,7 @@ clip_market_pdf = market_pdf[
     ~((market_pdf['shop_counts'] <= count_llim) & (market_pdf['min_fare'] > fare_ulim))
                             ]
 x1 = len(clip_market_pdf)
-fare_llim = np.percentile(market_pdf['min_fare'], 0.04)
+# fare_llim = np.percentile(market_pdf['min_fare'], 0.04)
 clip_market_pdf = clip_market_pdf[
     (clip_market_pdf['min_fare'] >= fare_llim)
                             ]
@@ -232,7 +234,7 @@ def cross_val_eval_models(
     mask_frac: float,
     rf_model,
     tune_lr_params: bool,
-    filename_base: str = f"{market}_cv-results"
+    filename_base: str = f"cv-results"
 ):
     """
     
@@ -329,7 +331,7 @@ def plot_modeling_results(
         res_df,
         metric_list = ['mae', 'mdae', 'mape', 'r2'],
         save_fig=True,
-        filename_base = f"{market}_cv-results"
+        filename_base = f"cv-results"
     ):
     """
     res_df: results dataframe from cross-validation
@@ -377,7 +379,7 @@ def plot_modeling_results(
 
 
 def inspect_errors(X, y, pred, pred_col="pred", 
-        filename_base=f"{market}_errors"
+        filename_base=f"errors"
     ):
     """
     Inspects and produces a variety of error plots.
@@ -494,21 +496,24 @@ def inspect_errors(X, y, pred, pred_col="pred",
 # with minor feature selection
 # ================================
 
+# INDIVIDUAL FEATURES
 ind_feat_err_dict = {
     "trail_avg": "trail_avg",
     "prev_search_day": "min_fare_prev_search_day"
 }
 for err_label, feature_col in ind_feat_err_dict.items():
     inspect_errors(X_train, y_train, feature_col, 
-                    filename_base=f"{market}_{err_label}_errors")
+                    filename_base=f"{err_label}_errors")
 
+
+# MODELING
 feature_selection_dict = {
     "all_features": list(feature_dict.keys()),
     "few_features": ["min_fare_prev_search_day", "trail_avg", "days_til_dept"]
 }
 
 for label, features in feature_selection_dict.items():
-    res_filename = f"{market}_{label}_cv-results"
+    res_filename = f"{label}_cv-results"
     cv_res_df, lr_pred_df, rf_pred_df = cross_val_eval_models(
         X=X_train,
         y=y_train,
@@ -516,7 +521,7 @@ for label, features in feature_selection_dict.items():
         mask_frac=mask_frac,
         rf_model=rf_model,
         tune_lr_params=tune_lr,
-        filename_base=filename
+        filename_base=res_filename
     )
     plot_modeling_results(cv_res_df, filename_base=res_filename)
 
@@ -526,6 +531,6 @@ for label, features in feature_selection_dict.items():
     }
     for err_label, pred_df in err_dict.items():
         inspect_errors(X_train, y_train, pred_df, 
-                       filename_base=f"{market}_{label}_{err_label}_errors")
+                       filename_base=f"{label}_{err_label}_errors")
 
 print("Done!")
