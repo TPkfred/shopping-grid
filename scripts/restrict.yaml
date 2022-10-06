@@ -1,0 +1,10 @@
+
+final_vals:
+  ratio_min_fare_median: 10
+  rsd: 1.5
+  top_rank: 15000
+
+val_ranges:
+  ratio_min_fare_median: [3, 5, 10]
+  rsd: [1.0, 1.25, 1.5]
+  top_rank: [5000, 10000, 15000]

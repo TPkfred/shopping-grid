@@ -27,26 +27,26 @@ class Preprocess:
             # Could consider constructing them as a sort of
             # trailing avg. 
 
-            # # shift departure day +/- 1
-            # "min_fare_prev_dept_day": {
-            #     'sort_col': 'outDeptDt',
-            #     'groupby_cols': ['inDeptDt', 'searchDt']
-            # },
-            # "min_fare_next_dept_day": {
-            #     'sort_col': 'outDeptDt',
-            #     'groupby_cols': ['inDeptDt', 'searchDt'],
-            #     'shift': -1
-            # },
-            # # shift return day +/- 1
-            # "min_fare_prev_return_day": {
-            #     'sort_col': 'inDeptDt',
-            #     'groupby_cols': ['outDeptDt', 'searchDt'],
-            # },
-            # "min_fare_next_return_day": {
-            #     'sort_col': 'inDeptDt',
-            #     'groupby_cols': ['outDeptDt', 'searchDt'],
-            #     'shift': -1
-            # }
+            # shift departure day +/- 1
+            "min_fare_prev_dept_day": {
+                'sort_col': 'outDeptDt',
+                'groupby_cols': ['inDeptDt', 'searchDt']
+            },
+            "min_fare_next_dept_day": {
+                'sort_col': 'outDeptDt',
+                'groupby_cols': ['inDeptDt', 'searchDt'],
+                'shift': -1
+            },
+            # shift return day +/- 1
+            "min_fare_prev_return_day": {
+                'sort_col': 'inDeptDt',
+                'groupby_cols': ['outDeptDt', 'searchDt'],
+            },
+            "min_fare_next_return_day": {
+                'sort_col': 'inDeptDt',
+                'groupby_cols': ['outDeptDt', 'searchDt'],
+                'shift': -1
+            }
         }
     
     trailing_features_dict = {

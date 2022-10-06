@@ -2,6 +2,7 @@
 """
 
 import os
+import sys
 import datetime
 import argparse
 import logging
@@ -49,6 +50,18 @@ parser.add_argument(
     help="Output directory to save results to.",
     default="../../output/modeling/"
 )
+parser.add_argument(
+    "--partition",
+    help="Whether to partition data by days til departure",
+    action="store_true",
+    default=False
+)
+parser.add_argument(
+    "--partition-window",
+    nargs=2,
+    required=False,
+    help="Window of values to include in partition",
+)
 # parser.add_argument(
 #     "--mask-fraction",
 #     help="Fraction of data to mask at a time. Also determines "
@@ -58,6 +71,7 @@ parser.add_argument(
 # parser.add_argument(
 #     "--tune-lr",
 #     help="Whether to tune the Linear Regression model",
+    # action="store_true",
 #     default=False
 # )
 # parser.add_argument(
@@ -67,6 +81,9 @@ parser.add_argument(
 # )
 
 args = parser.parse_args()
+# print(args)
+partition_window = [int(x) for x in args.partition_window]
+# print(pw)
 
 input_dir = args.input_dir
 parent_output_dir = args.output_dir
@@ -74,7 +91,15 @@ market = args.market
 # mask_frac = args.mask_fraction
 # tune_lr = args.tune_lr
 
-output_dir = os.path.join(parent_output_dir, market)
+if args.partition:
+    partition_folder = "-".join(args.partition_window)
+    output_dir = os.path.join(parent_output_dir, "partitioned_data", partition_folder, market)
+else:
+    output_dir = os.path.join(parent_output_dir, "all_data", market)
+
+# print(output_dir)
+# sys.exit(0)
+
 os.makedirs(output_dir, exist_ok=True)
 
 Configs = u.Configs()
@@ -133,7 +158,6 @@ print("Number low fares clipped:", x1-x2)
 print("Remaining fraction data:", x2/y)
 print("   ")
 
-# split data into train & hold-out sets
 y = clip_market_pdf[target_col]
 X = clip_market_pdf.drop(columns=[target_col])
 
@@ -157,8 +181,11 @@ def inspect_errors(
         full_df, 
         pred_col="pred", 
         filename_base=f"errors",
-        clip_data=True,
-        clip_window=3
+        clip_window_data=True,
+        clip_window=3,
+        partition_data=False,
+        partition_by="days_til_dept",
+        partition_window=[0,0]
     ):
     """
     Inspects and produces a variety of error plots and summary statistics.
@@ -172,6 +199,10 @@ def inspect_errors(
     pred_col (str): the column that contains the predictions.
     filename_base (str): Base string for filename. `pred_col` will get 
         appended to final filename.
+    clip_window_data (bool): whether to clip off data occuring before largest
+        trailing average window
+    partition_data (bool): whether to "partition" data by `parition_by` column, 
+        to include `partition_window` values
     
     returns:
     --------
@@ -182,12 +213,14 @@ def inspect_errors(
     df = full_df.dropna(subset=[pred_col])
     x1 = len(df)
 
-    if clip_data:
+    if clip_window_data:
         search_cutoff = datetime.datetime.combine(
-            search_start + datetime.timedelta(days=max_window), datetime.time(0,0)
+            search_start + datetime.timedelta(days=clip_window), datetime.time(0,0)
         )
         df = df[df['searchDt_dt'] >= search_cutoff]
 
+    if partition_data:
+        df = df[df[partition_by].between(*partition_window)]
     
     # calculate errors
     df["error"] = df[target_col] - df[pred_col]
@@ -199,10 +232,7 @@ def inspect_errors(
     
     pe_threshold = model_params["outcome"]["percent_error_threshold"]
     x2 = len(df[df['abs_percent_error'] <= pe_threshold])
-    # y = len(df)
-    # print(f"Percent of data that are predicted within "
-    # f"{pe_threshold*100:.1f}% error threshold: {x/y*100:.1f}%")
-    
+
     acc_results.update({
         'pct_under_threshold': x2/x0,
         'num_nulls': x0 - x1,
@@ -276,8 +306,7 @@ def inspect_errors(
 
 
 # ================================
-# FITTING, EVAL
-# with minor feature selection
+# EVAL
 # ================================
 
 # preprocess to get features
@@ -289,14 +318,8 @@ pp_df.to_pickle(os.path.join(output_dir, "feature_df.pkl"))
 print(pp_df.head())
 print(pp_df.columns)
 
-# INDIVIDUAL FEATURES
 
-# ind_feat_err_dict = {
-#     "trail_avg": "trail_avg",
-#     "prev_search_day": "min_fare_prev_search_day"
-# }
-
-# clip data for search dates that fall before max window is reached
+# for clipping data for search dates that fall before largest window is reached
 max_window = pp.calc_max_window()
 
 results_dict = {}
@@ -304,10 +327,13 @@ for feature_col in pp.feature_list:
     print(f"working on {feature_col}")
     feat_results = inspect_errors(
         full_df=pp_df,
-        clip_data=True,
+        filename_base=f"{feature_col}_errors",
+        clip_window_data=True,
         clip_window=max_window,
         pred_col=feature_col, 
-        filename_base=f"{feature_col}_errors"
+        partition_data= args.partition,
+        partition_by="days_til_dept",
+        partition_window=partition_window,
     )
     results_dict[feature_col] = feat_results
     print()
