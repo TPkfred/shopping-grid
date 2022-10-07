@@ -1,12 +1,14 @@
 
-def plot_shops(market, market_pdf, what_to_plot="shops", save_fig=False):
-    """
+def plot_shop_coverage(market, market_pdf, what_to_plot="shops", save_fig=False):
+    """Heatmap of shopping coverage
+
     params:
     --------
     what_to_plot (str): ["shops", "vol", "both"]
     """
     # AGGREGATE DATA
-    agg_cols = ["num_shop_days", "avg_pct_coverage_shop", 
+    agg_cols = ["num_shop_days", 
+                "avg_pct_coverage_shop", 
                 "total_num_solutions", "avg_num_solutions"] 
     agg_dict = {"shop_ind": "sum", 
                 "avg_shop_days": "mean",
@@ -186,12 +188,17 @@ def line_plot_coverage_vs_dtd(pos,
         file_name = f"{pos}-line_{filename_extra}"
         plt.savefig(out_dir + file_name + ".png", format="png")
 
+#=======================
+# FARE ANALYSIS 
+#=======================
 
-
-dow_dict = dict(zip(range(7), ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]))
+dow_list =  ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+dow_dict = dict(zip(range(7), dow_list))
 
 def heatmap_min_fare(pdf_to_plot, first_day, num_days=7):
-    """
+    """Heatmap of minimum fare by departure date and stay duration.
+    One plot per shopping day.
+
     pdf_to_plot (pandas DataFrame): data to plot
     first_day (datetime): first search/shopping day to plot
     num_days (int): number of search/shopping days to plot.
@@ -210,3 +217,35 @@ def heatmap_min_fare(pdf_to_plot, first_day, num_days=7):
                 );
         dow = dow_dict[datetime.date.weekday(search_dt)]
         plt.title(f"Search date: {search_dt.strftime('%Y-%m-%d')} ({dow})")
+
+
+def heatmap_min_fare_by_dow(market_pdf, market):
+    market_pdf['dept_dt_dow'] = market_pdf['outDeptDt_dt'].apply(
+        lambda d: datetime.date.weekday(d))
+    market_pdf['return_dt_dow'] = market_pdf['inDeptDt_dt'].apply(
+            lambda d: datetime.date.weekday(d))
+    data_col = "min_fare"
+    dow_summ = market_pdf.groupby(["dept_dt_dow", "return_dt_dow"])[data_col].mean()
+    dow_summ = pd.DataFrame(dow_summ)
+    dow_summ.reset_index(inplace=True)
+    pvt = pd.pivot(data=dow_summ, index='return_dt_dow', columns='dept_dt_dow', values=data_col)
+    sns.heatmap(pvt, cmap="coolwarm",
+            xticklabels=dow_list, yticklabels=dow_list,
+            cbar_kws={'label': "avg min fare"}
+            );
+    plt.xlabel("Departure DOW")
+    plt.ylabel("Return DOW");
+    plt.title(market)
+    plt.show()
+
+
+def generic_bar_chart(df, data_col, label_col=None, rotate_labels=False):
+    xs = range(len(df))
+    plt.bar(xs, df[data_col])
+    if label_col:
+        plt.xticks(xs, df[label_col])
+        plt.xlabel(label_col)
+    if rotate_labels:
+        plt.xticks(rotation=90)
+    plt.ylabel(data_col)
+

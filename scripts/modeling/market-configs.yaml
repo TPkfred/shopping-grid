@@ -1,0 +1,3 @@
+LAX-EWR:
+    fare_ulim_percentile: 99.8
+    fare_llim_percentile: 0.04

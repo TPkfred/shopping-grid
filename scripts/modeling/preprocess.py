@@ -3,17 +3,10 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
+from utils import Configs
 
-holidays = [
-    datetime.date(2022,9,5), # Labor Day
-    datetime.date(2022,11,23), # Day before Thanksgiving
-    datetime.date(2022,11,24), # Thanksgiving
-    datetime.date(2022,11,25), # Thanksgiving
-    datetime.date(2022,12,23), # Christmas Eve Obs
-    datetime.date(2022,12,24), # Christmas Eve
-    datetime.date(2022,12,25), # Christmas
-    datetime.date(2022,12,26), # Christmas Obs
-]
+holidays = Configs().global_configs['date_time_params']['holidays']
+
 
 class Preprocess:
     shifted_features_dict = {
@@ -93,13 +86,13 @@ class Preprocess:
         mask_df = pd.concat([train_pdf, X_test], axis=0, sort=False)
         self.mask_df = mask_df
         self._masking = True
-        # return mask_df
     
     def mask_only(self, X_train, X_test, y_train, y_test):
         """Mask y_test in recombined dataset.
         
         Use if X & y have already been train-test split, such as 
-        during cross-validation."""
+        during cross-validation.
+        """
         self.y_test = y_test
         train_pdf = pd.concat([X_train, y_train], axis=1)
         train_pdf["train_test"] = "train"
@@ -131,7 +124,11 @@ class Preprocess:
 
         df['trail_avg'] = (df
                 .sort_values(by="searchDt")
-                # .groupby(["days_til_dept", "stay_duration"])
+                # this is going to be very restrictive. We won't have a lot of data.
+                # i.e. will only have a datapoint for a given combination of dtd +
+                # dept DOW once every 7 shopping days. 
+                # Also need to check that this isn't leaky -- confirm that current
+                # data point isn't included
                 .groupby(["days_til_dept", "dept_dt_dow", "return_dt_dow"])
                 [self.target_col]
                 .transform(lambda x: x.rolling(
@@ -170,7 +167,16 @@ class Preprocess:
                                    fillna_val,
                                    df['trail_avg']
                                   )
-        return df
+        
+        # drop any remaining NaN's for now
+        df_drop = df.dropna(subset=self.feature_list)
+        
+        x, y = len(df_drop), len(df)
+        if x != y:
+            print(f"Dropping {y-x} na rows")
+        
+        return df_drop
+    
     
     def extract_dow(self, df):
         df['dept_dt_dow'] = df['outDeptDt_dt'].apply(
@@ -223,7 +229,8 @@ class Preprocess:
             # can't just clip the full df -- need to update y_test as well
             
             # pull y_test back into test_df to associate it with search dates
-            test_df[self.target_col] = self.y_test
+            test_df.loc[:, self.target_col] = self.y_test
+
             # filter test_df on search date
             test_df = test_df[test_df['searchDt_dt'] > self.first_search_dt]
             # update y_test

@@ -145,7 +145,7 @@ df3.repartition(1).write.mode("overwrite").parquet(out_dir)
 
 
 // ====================================
-// ESTREAM
+// ESTREAMING MIDT_1_5 FORMAT
 import com.tvlp.cco.util.Utils.UDFs._
 import com.tvlp.cco.util.Utils.QueryHelpers._
 
@@ -194,5 +194,54 @@ val out_dir = "/user/kendra.frederick/shop_vol/v7/decoded/"
 df3.write.partitionBy("searchDt").mode("overwrite").parquet(out_dir)
 
 
+// ====================================
+// ESTREAMING MIDT_1_5 FORMAT
+// selectively process only certain date subfolders
 
+import com.tvlp.cco.util.Utils.UDFs._
+import com.tvlp.cco.util.Utils.QueryHelpers._
+import java.time.format.DateTimeFormatter
+import java.time.{LocalDate, Period}
 
+// Copy output dir from `estream_analysis` script and append "/*".
+// val input_dir = "/user/kendra.frederick/shop_vol/v7/raw/*"
+// val out_dir = "/user/kendra.frederick/shop_vol/v7/decoded/"
+val base_dir = "/user/kendra.frederick/shop_vol/v7/"
+val input_dir = base_dir + "raw/"
+val output_dir = base_dir + "decoded_new_format/"
+
+// val coalesceCols = Seq("a", "b")
+val startDateStr = "2022-09-21"
+val endDateStr = "2022-09-28"
+val startDate = LocalDate.parse(startDateStr)
+val endDate = LocalDate.parse(endDateStr)
+val days = Period.between(startDate, endDate).getDays()
+
+for (i <- 0 to days by 1) {
+    var nextDate = startDate.plusDays(i)
+    var nextDateStr = nextDate.format(DateTimeFormatter.ofPattern("yyyyMMdd"))
+    println("Processing " + nextDateStr)
+    val df = spark.read.parquet(input_dir + nextDateStr)
+    val df2 = (df.withColumn("origin", (numToStringUDF(col("outOriginAirport"))))
+        .withColumn("destination", (numToStringUDF(col("outDestinationAirport"))))
+        .withColumn("pos_decoded", (numToStringUDF(col("pos"))))
+        .withColumn("currency_decoded", (numToStringUDF(col("currency"))))
+        )
+
+    // drop & rename columns
+    val df3 = (df2
+        .drop("outOriginAirport", "outDestinationAirport", "pos", "currency", "pcc")
+        .withColumn("market", concat_ws("-", col("origin"), col("destination")))
+        .withColumnRenamed("pos_decoded", "pos")
+        .withColumnRenamed("currency_decoded", "currency")
+        .select("market",  "origin", "destination", "round_trip",
+            "pos", "currency", 
+            "outDeptDt", "inDeptDt", "searchDt", 
+            "shop_counts", "min_fare"
+        )
+    )
+    // save
+    df3.write.mode("overwrite").parquet(output_dir + nextDateStr)
+}
+
+println("Done!")

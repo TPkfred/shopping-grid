@@ -12,9 +12,10 @@ __pycache__/
 # repo-specific
 output/
 in_process/
+analysis/
+logs/
 *Purgatory/
 *.pptx
-
 # will add any notebooks by hand (they are large, otherwise)
 notebooks/
 
