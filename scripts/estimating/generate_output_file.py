@@ -155,41 +155,7 @@ def filter_rank(df, rank):
     markets_filt = market_cnts[market_cnts['rank'] <= top_rank]
     df_filt_top = df.join(markets_filt.select("market", "rank"), on="market")
     return df_filt_top
-
-
-def calc_shifted_min_fare(df):
-    w = (Window
-        .partitionBy('market', 'outDeptDt', 'inDeptDt')
-        .orderBy("searchDt")
-        )
-
-    df = (df
-            # TODO: make this column name a magic variable / constant
-            .withColumn("min_fare_last_shop_day", F.lag("min_fare").over(w))
-            .withColumn("prev_shop_day", F.lag("searchDt_dt").over(w))
-            .withColumn("prev_shop_date_diff", F.datediff(F.col("searchDt_dt"), F.col("prev_shop_day")))
-        )
-    return df
-
-def calc_error(df, col):
-    # % error = actual - pred / actual
-    df = (df.withColumn("error", F.col("min_fare") - F.col(col))
-            .withColumn("abs_pct_error", F.abs(F.col("error")) / F.col("min_fare"))
-         )
-    return df
-
-def calc_error_stats(df):
-    """
-    df: dataframe continaing errors
-    """
-    err_stats = df.describe(['abs_pct_error']).collect()
-    median_error = df.approxQuantile("abs_pct_error", [0.5], 0.01)[0]
-    err_dict = {r['summary']: r['abs_pct_error'] for r in err_stats}
-    err_dict['median'] = median_error
-    err_dict['num_markets'] = df.select("market").distinct().count()
-    return err_dict
     
-
 # ===========================
 # MAIN
 # ===========================
