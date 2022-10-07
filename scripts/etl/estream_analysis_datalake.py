@@ -198,7 +198,7 @@ def grid_analysis(df_preproc, date_str):
     day_df = df_agg.withColumn("search_date", F.lit(date_str))
     day_df.show(5)
     if include_pcc:
-        num_partitions = ceil(opt_num_grid_parts * 1.5)
+        num_partitions = int(ceil(opt_num_grid_parts * 1.5))
         save_path = grid_out_dir + "with_pcc/" + date_str
     else:
         num_partitions = opt_num_grid_parts
