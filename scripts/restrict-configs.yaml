@@ -1,0 +1,10 @@
+
+default:
+  ratio_min_fare_median: 5
+  rsd: 1.5
+  rank: 15000
+
+ranges:
+  ratio_min_fare_median: [3, 5, 10]
+  rsd: [1.0, 1.25, 1.5]
+  rank: [5000, 10000, 15000]
