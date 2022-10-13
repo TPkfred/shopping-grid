@@ -25,8 +25,8 @@ from pyspark.sql.window import Window
 cols_to_write = [
  'pos',
  'currency',
- 'origin',
- 'destination',
+ 'origin_city',
+ 'destination_city',
  'outDeptDt',
  'inDeptDt',
  'min_fare'
@@ -38,8 +38,27 @@ script_start_time = datetime.datetime.now()
 print("{} - Starting script".format(script_start_time.strftime("%Y-%m-%d %H:%M")))
 
 
-parser = argparse.ArgumentParser(description="Apply filters and "
-    "restrictions to data, and evaluate feature(s).")
+parser = argparse.ArgumentParser(
+    description="Generate lookup / 'prediction' file. Optionally applies "
+    " filters restrictions to data."
+)
+parser.add_argument(
+    "--pos",
+    help="Point of Sale two-letter code",
+    default="US",
+)
+parser.add_argument(
+    "--currency",
+    help="Currency (3-letter code)",
+    default="USD",
+)
+parser.add_argument(
+    "--stale-after",
+    help="Exclude data older than this many days old. "
+    "If this param is set to 0, restriction will not be applied. Default = 0",
+    type=int,
+    default=0,
+)
 parser.add_argument(
     "--prev-val-ratio",
     help="Ratio of current value to previous. If data is > than this "
@@ -51,16 +70,24 @@ parser.add_argument(
 parser.add_argument(
     "--ratio-median",
     help="Ratio of current value to median for market. If data is > than "
-    "this filter it will be excluded. If this param is set to 0, filter "
+    "this value, it will be excluded. If this param is set to 0, filter "
+    "will not be applied. Default = 0",
+    type=int,
+    default=0,
+)
+parser.add_argument(
+    "--ratio-mean",
+    help="Ratio of current value to mean for market. If data is > than  "
+    "this value, it will be excluded. If this param is set to 0, filter "
     "will not be applied. Default = 0",
     type=int,
     default=0,
 )
 parser.add_argument(
     "--shop-counts",
-    help="Minimum threshold applied to shop counts in conjuction with median "
-    "ratio. If this param is set to 0, "
-    "will not be applied. Default = 0",
+    help="Minimum threshold applied to shop counts in conjuction with mean "
+    "and/or median ratios. If this param is set to 0, "
+    "filter will not be applied. Default = 0",
     type=int,
     default=0,
 )
@@ -87,41 +114,42 @@ parser.add_argument(
     type=int,
     default=0,
 )
-parser.add_argument(
-    "--stale-after",
-    help="Exclude data older than this many days old. "
-    "If this param is set to 0, restriction will not be applied. Default = 0",
-    type=int,
-    default=0,
-)
-parser.add_argument(
-    "--input-dir", "-i",
-    help="Directory (in HDFS) containing input data",
-    default="/user/kendra.frederick/shop_vol/v7/US-pos_extra-days/"
-)
+
+# parser.add_argument(
+#     "--input-dir", "-i",
+#     help="Directory (in HDFS) containing input data",
+#     default="/user/kendra.frederick/shop_grid"
+# )
 args = parser.parse_args()
 
 prev_val_ratio = args.prev_val_ratio
 ratio_median = args.ratio_median
+ratio_mean = args.ratio_mean
 shop_counts_threshold = args.shop_counts
 dow_filter = args.dow_filter
 rsd = args.rsd
 rank = args.rank
 stale_after = args.stale_after
-input_dir = args.input_dir
+
+pos = args.pos
+currency = args.currency
+
+base_input_dir = "/user/kendra.frederick/shop_grid"
+input_dir = "{}/{}-{}".format(base_input_dir, pos, currency)
 
 no_filters = (
     (prev_val_ratio == 0)
     & (ratio_median == 0)
+    & (ratio_mean == 0)
     & (dow_filter is False)
     & (rsd == 0)
     & (rank == 0)
 )
 
 # derive shopping date cutoff
-# assumes
+# assumes input data is current through today / yesterday
 shop_date_cutoff = datetime.date.today() - datetime.timedelta(days=stale_after)
-
+shop_date_cutoff_int = int(shop_date_cutoff.strftime("%Y%m%d"))
 
 
 APP_NAME = "generate-calendar-predictions"
@@ -148,7 +176,7 @@ def filter_prev_val_ratio(df, prev_val_ratio):
 
 
 def filter_ratio_median(df, ratio_median, shop_counts_threshold=0):
-    """Filter out high-fare anomalous data based on ratio to the median.
+    """Filter out data based on ratio to its markets median lowest fare.
 
     An anomaly is defined as being higher than X-fold of the median
     value for that market's min fares *and* having shop counts below
@@ -159,19 +187,44 @@ def filter_ratio_median(df, ratio_median, shop_counts_threshold=0):
         "median", F.expr("percentile_approx(min_fare, 0.5)").over(w)
     )
     df = df.withColumn(
-        "z_score", 
+        "ratio_median", 
         F.col("min_fare") / F.col("median")
     )
     if shop_counts_threshold > 0:
         df_filt_anom = df.filter(
-                ~((F.col("z_score") >= ratio_median)
+                ~((F.col("ratio_median") >= ratio_median)
                 & (F.col("shop_counts") < shop_counts_threshold))
                 )
     else:
          df_filt_anom = df.filter(
-                (F.col("z_score") < ratio_median)
+                (F.col("ratio_median") < ratio_median)
          )
                   
+    return df_filt_anom
+
+
+def filter_ratio_mean(df, ratio_mean):
+    """Filter out data based on its ratio to its market's mean lowest fare.
+
+    Only filters out high-fare anomalies.
+    """
+    w = Window.partitionBy("market")
+    df = df.withColumn(
+        "mean", F.mean("min_fare").over(w)
+    )
+    df = df.withColumn(
+        "ratio_mean", 
+        F.col("min_fare") / F.col("mean")
+    )
+    if shop_counts_threshold > 0:
+        df_filt_anom = df.filter(
+                ~((F.col("ratio_mean") >= ratio_mean)
+                & (F.col("shop_counts") < shop_counts_threshold))
+                )
+    else:
+         df_filt_anom = df.filter(
+                (F.col("ratio_mean") < ratio_mean)
+         )
     return df_filt_anom
 
 
@@ -180,15 +233,15 @@ def filter_rsd(df, rsd_threshold):
 
     RSD = relative standard deviation = stddev / mean
 
-    Note: these calcs should be done after any anomaly filtering
+    Note: these calcs should typically be done after any anomaly filtering
     """
     market_fare_stats = (df
                         .groupBy("market")
                         .agg(
                             F.mean("min_fare").alias("avg_min_fare"),
                             F.stddev("min_fare").alias("std_min_fare"),
-                            F.min("min_fare").alias("min_min_fare"),
-                            F.mean("min_fare").alias("max_min_fare"),
+                            # F.min("min_fare").alias("min_min_fare"),
+                            # F.mean("min_fare").alias("max_min_fare"),
                         )
                     .withColumn("rsd", F.col("std_min_fare")/F.col("avg_min_fare"))
                     .dropna()
@@ -237,15 +290,28 @@ print("Reading data")
 df = spark.read.parquet(input_dir)
 
 if stale_after > 0:
-    df = df.filter(F.col("searchDt_dt") >= shop_date_cutoff)
+    df = df.filter(F.col("searchDt") >= shop_date_cutoff_int)
 
+# modify "market"
+    # prior: defined by airport
+    # now: defined by city
+
+df = df.withColumn("market", 
+        F.concat_ws("-", F.col("origin_city"), F.col("destination_city"))
+)
 df.cache()
 
 print("Applying filters & restrctions")
 df_mod = df.select("*")
+
 if dow_filter:
     df = add_dow_ind(df)
     df_mod = filter_dow_combo(df_mod)
+
+if ratio_mean != 0:
+    df_mod = filter_ratio_mean(
+        df_mod, ratio_mean, shop_counts_threshold
+    )
 
 if ratio_median != 0:
     df_mod = filter_ratio_median(
@@ -270,20 +336,17 @@ df_with_recency = (df_mod
 
 df_most_recent = df_with_recency.filter(F.col("recency_rank") == 1)
 
-df_most_recent.show(5)
+df_most_recent.select(cols_to_write).show(5)
+print(df_most_recent.count())
 
-# num_part = 10 if no_filters else 5
-num_part = 5 # good enough for both cases
+num_part = 10 if no_filters else 5
+# num_part = 5 # good enough for both cases
 
 # write to HDFS csv
-# alt: coalesce to 5, write to parquet
-# then reload and save as single .csv file
-# saving directly to a single-partition .csv file doesn't work
-# (get an OOM)
 print("Writing data to file")
 (df_most_recent
  .select(cols_to_write)
- .coalesce(num_part) # convert this to repartition?
+ .coalesce(num_part) # haven't seen a need to convert this to repartition yet...
  .write.mode("overwrite")
  .csv(output_dir + "/US-USD", header=True)
 )

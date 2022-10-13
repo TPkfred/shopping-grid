@@ -1,9 +1,19 @@
 """
-**COME UP WITH A BETTER NAME FOR THIS FILE**
+Pre-processes aggregated eStreaming data in support of downstream
+processing related to modeling, caching, and analysis.
 
-Does 
+- filters on POS and currency
+    - O or D in POS country
+- converts data types
+- creates of 'days until departure' (dtd) and 'stay duration' 
+    (or length of stay, LOS) features and filters on them
 
+
+Notes / thoughts:
+- In the future, we may want to *not* filter on dtd and LOS here, 
+    but rather keep data less restricted
 """
+
 import datetime
 import argparse
 from functools import reduce
@@ -23,7 +33,7 @@ APP_NAME = "KF-ProcessAggdShopData"
 # This is the current input directory.
 # We load hard-coded older ones below.
 input_dir = "/user/kendra.frederick/shop_vol/v8/raw"
-output_dir = "/user/kendra.frederick/shop_vol/processed_agg_data"
+output_dir = "/user/kendra.frederick/shop_grid/"
 
 DATE_FORMAT = "%Y-%m-%d"
 
@@ -46,12 +56,12 @@ parser.add_argument(
     type=str,
     required=True
 )
-parser.add_argument(
-    "--trip-type",
-    choices=("round-trip", "one-way"),
-    help="Whether to process round-trips or one-ways",
-    default="round-trip",
-)
+# parser.add_argument(
+#     "--trip-type",
+#     choices=("round-trip", "one-way"),
+#     help="Whether to process round-trips or one-ways",
+#     default="round-trip",
+# )
 parser.add_argument(
     "--min-stay-duration",
     help="Minimum length of stay / stay duration",
@@ -91,15 +101,18 @@ parser.add_argument(
 )
 parser.add_argument(
     "--test", "-t",
-    help="Run in test mode on 'old' data only",
+    help="Run in test mode",
     default=False,
     action="store_true"
 )
+parser.add_argument(
+    "--write-mode", "-wm",
+    help="Write mode (e.g. 'append' or 'overwrite')",
+    choices=("append", "overwrite", "ignore"),
+    default="append",
+)
 
 args = parser.parse_args()
-run_mode = "spark-submit"
-# trip_type = args.trip_type
-round_trip = args.trip_type == "round-trip"
 
 min_stay_duration = args.min_stay_duration
 # add one to allow for shifted feature
@@ -108,12 +121,10 @@ min_days_til_dept = args.min_days_til_dept
 # add one to allow for shifted feature
 max_days_til_dept = args.max_days_til_dept + 1
 
-# shop_date_str = args.shop_date
-# stale_cutoff = args.stale_after
 shop_start_str = args.shop_start
 shop_end_str = args.shop_end
-shop_start_dt = datetime.datetime.strptime(shop_start_str, DATE_FORMAT)
-shop_end_dt = datetime.datetime.strptime(shop_end_str, DATE_FORMAT)
+shop_start_dt = datetime.datetime.strptime(shop_start_str, DATE_FORMAT).date()
+shop_end_dt = datetime.datetime.strptime(shop_end_str, DATE_FORMAT).date()
 num_shop_days = (shop_end_dt - shop_start_dt).days
 shop_date_range = {shop_start_dt + datetime.timedelta(days=d) for d in range(num_shop_days)}
 shop_str_range = [d.strftime("%Y%m%d") for d in shop_date_range]
@@ -121,6 +132,8 @@ shop_int_range = [int(s) for s in shop_str_range]
 
 pos = args.pos
 currency = args.currency
+
+write_mode = args.write_mode
 
 test = args.test
 
@@ -141,17 +154,13 @@ print("Saving processed data to: {}".format(output_dir))
 # -----------------------
 spark = SparkSession.builder.appName(APP_NAME).getOrCreate()
 
-# # not sure we need these
-# jvm = spark._jvm
-# jsc = spark._jsc
-# fs = jvm.org.apache.hadoop.fs.FileSystem.get(jsc.hadoopConfiguration())
-
 # ========================
 # HELPER FUNCTIONS
 # ========================
 
-# TODO: add in other arguments
-def preprocess_data(df, round_trip=True):
+def preprocess_data(df, min_days_til_dept, max_days_til_dept,
+    min_stay_duration, max_stay_duration
+    ):
     """Preprocesses data
     
     - Computes stay duration and days until departure
@@ -160,10 +169,6 @@ def preprocess_data(df, round_trip=True):
         - days_til_dept between min/max
         - round trip or one-way intineraries
     """
-    # updated column names
-    df = df.withColumn("market", 
-        F.concat_ws("-", F.col("origin"), F.col("destination")))
-
     # convert dates (which are ints) to datetime
     df.registerTempTable("data")
     df = spark.sql("""
@@ -173,31 +178,26 @@ def preprocess_data(df, round_trip=True):
             TO_DATE(CAST(UNIX_TIMESTAMP(CAST(searchDt AS string), 'yyyyMMdd') AS TIMESTAMP)) AS searchDt_dt
         FROM data
     """)
-
-    # **MOVE THIS ELSEWHERE IF WE NEED TO SUPPORT ONE-WAYS**
-    # filter on round-trip
-    df_filt = (df
-                .filter(F.col("round_trip") == round_trip)
-            )
     
-    # Add days_til_dept column & filter on it
-    df_filt = (df_filt.withColumn('days_til_dept',
-                    F.datediff(
-                        F.col('outDeptDt_dt'), F.col('searchDt_dt')))
-                   .filter(F.col('days_til_dept')
-                       .between(min_days_til_dept, max_days_til_dept))
-                  )
+    # add days_til_dept column & filter on it
+    df_filt = (df
+        .withColumn('days_til_dept', F.datediff(
+                        F.col('outDeptDt_dt'), F.col('searchDt_dt'))
+                    )
+        .filter(F.col('days_til_dept').between(
+                        min_days_til_dept, max_days_til_dept)
+                )
+        )
 
-    # **MOVE THIS ELSEWHERE IF WE NEED TO SUPPORT ONE-WAYS**
-    if round_trip:
-        # add stay_duration column & filter on it
-        df_filt = (df_filt.withColumn('stay_duration', F.datediff(
+    # add stay_duration column & filter on it
+    df_filt = (df_filt
+        .withColumn('stay_duration', F.datediff(
                         F.col('inDeptDt_dt'), F.col('outDeptDt_dt')))
-                # Note this effectively filters out null stay durations, 
-                # which are one-way trips   
-                    .filter(F.col("stay_duration").between(
-                        min_stay_duration, max_stay_duration
-                    )))
+        .filter(
+            (F.col("stay_duration").between(
+                min_stay_duration, max_stay_duration))
+            | (F.col("stay_duration").isNull()))
+    )
     
     # add shop indicator for individual market heatmaps
     df_filt = df_filt.withColumn("shop_ind", F.lit(1))
@@ -206,6 +206,10 @@ def preprocess_data(df, round_trip=True):
 
 
 def filter_pos(df, pos, currency):
+    """Filters on pos and currency, and also O & D in pos country.
+    
+    Also enriches data with O & D city.
+    """
     pos_df = df.filter(
         (F.col("pos") == pos) & (F.col("currency") == currency)
     )
@@ -213,16 +217,18 @@ def filter_pos(df, pos, currency):
     # filter on org or dest in country of POS
     pos_df = (pos_df
                     .join(
-                        airport_df.select('airport_code', 'country_code'),
-                        on=[pos_df['origin'] == airport_df['airport_code']],
-                    ).withColumnRenamed("country_code", "origin_country")
+                        airport_df.select('airport_code', 'country_code', 'reference_city_code'),
+                        on=[pos_df['origin'] == airport_df['airport_code']],)
+              .withColumnRenamed("country_code", "origin_country")
+              .withColumnRenamed("reference_city_code", "origin_city")
                     .drop("airport_code")
                     )
     pos_df = (pos_df
                     .join(
-                        airport_df.select('airport_code', 'country_code'),
+                        airport_df.select('airport_code', 'country_code', 'reference_city_code'),
                         on=[pos_df['destination'] == airport_df['airport_code']],
                     ).withColumnRenamed("country_code", "destination_country")
+              .withColumnRenamed("reference_city_code", "destination_city")
                     .drop("airport_code")
                     )
 
@@ -282,12 +288,6 @@ if len(shop_date_range.intersection(v7_new_date_range)) > 0:
     cov_df2 = cov_df2.withColumn("searchDt", F.col("searchDt").cast(T.IntegerType()))
     cov_df_list.append(cov_df2)
 
-if (cov_df1 is not None) & (cov_df2 is not None):
-    cols_in_order = cov_df2.columns
-    cov_df1 = cov_df1.select(cols_in_order)
-    # cov_df = cov_df1.union(cov_df2)
-    cov_df_list.append(cov_df1)
-
 
 # current ("v8")
 ## Shopping data from 09/30/2022 onvwards are saved in this format / location.
@@ -324,8 +324,17 @@ if shop_end_dt >= datetime.date(2022,9,30):
             "shop_counts", "min_fare"
         )
     )
-    # cov_df = cov_df.union(cov_df3)
     cov_df_list.append(cov_df3)
+
+# column order must be the same in order to `union` df's
+# Note: we don't need to check on cov_df3, because it's not possible
+# for df1 to be non-None, df2 to be None, and df3 to be non-None
+if (cov_df1 is not None) & (cov_df2 is not None):
+    cols_in_order = cov_df2.columns
+    cov_df1 = cov_df1.select(cols_in_order)
+    cov_df_list.append(cov_df1)
+elif cov_df1 is not None:
+    cov_df_list.append(cov_df1)
 
 # combine
 cov_df = reduce(lambda df1, df2: df1.union(df2), cov_df_list)
@@ -334,16 +343,19 @@ cov_df = reduce(lambda df1, df2: df1.union(df2), cov_df_list)
 # ========================
 # PROCESS DATA
 # ========================
-
-proc_df = preprocess_data(cov_df)
-pos_df = filter_pos(proc_df, pos, currency)
+print("Processing data")
+pos_df = filter_pos(cov_df, pos, currency)
+proc_df = preprocess_data(pos_df, min_days_til_dept, max_days_til_dept,
+    min_stay_duration, max_stay_duration)
 
 print("Writing data")
-trip_type = "rt" if round_trip else "ow"
-output_path = "{}/{}-{}-{}".format(output_dir, pos, currency, trip_type)
+output_path = "{}/{}-{}".format(output_dir, pos, currency)
 if test:
     output_path += "-test"
-pos_df.repartition(1).write.partitionBy("searchDt").mode("overwrite").parquet(output_path)
+(proc_df.repartition(1)
+    .write.partitionBy("searchDt")
+    .mode(write_mode).parquet(output_path)
+)
 
 script_end_time = datetime.datetime.now()
 elapsed_time = (script_end_time - script_start_time).total_seconds() / 60   
