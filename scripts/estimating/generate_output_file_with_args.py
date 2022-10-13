@@ -14,7 +14,6 @@ import datetime
 import argparse
 import os
 import sys
-import json
 
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
@@ -22,37 +21,107 @@ import pyspark.sql.types as T
 from pyspark.sql.window import Window
 
 # import numpy as np
-import pandas as pd
 
-# project-specific configs & utils
-from config import *
+cols_to_write = [
+ 'pos',
+ 'currency',
+ 'origin',
+ 'destination',
+ 'outDeptDt',
+ 'inDeptDt',
+ 'min_fare'
+]
+output_dir = "/user/kendra.frederick/tmp/calendar_data"
 
-
-pd.options.mode.chained_assignment = None
-pd.set_option("display.max_columns", 100)
 
 script_start_time = datetime.datetime.now()
 print("{} - Starting script".format(script_start_time.strftime("%Y-%m-%d %H:%M")))
 
 
 parser = argparse.ArgumentParser(description="Apply filters and "
-    "restrictions to data, and evaluate feature(s). Note that the "
-    "arguments below control whether a restriction/fitler is applied "
-    "but their threshold values are defined in a config file.")
+    "restrictions to data, and evaluate feature(s).")
 parser.add_argument(
-    "--run-mode",
-    help="Run-mode",
-    # TODO: flesh out manual option
-    choices=("config", "manual"),
-    default="config"
+    "--prev-val-ratio",
+    help="Ratio of current value to previous. If data is > than this "
+    "filter it will be excluded. If this param is set to 0, filter "
+    "will not be applied. Default = 0",
+    type=int,
+    default=0,
+)
+parser.add_argument(
+    "--ratio-median",
+    help="Ratio of current value to median for market. If data is > than "
+    "this filter it will be excluded. If this param is set to 0, filter "
+    "will not be applied. Default = 0",
+    type=int,
+    default=0,
+)
+parser.add_argument(
+    "--shop-counts",
+    help="Minimum threshold applied to shop counts in conjuction with median "
+    "ratio. If this param is set to 0, "
+    "will not be applied. Default = 0",
+    type=int,
+    default=0,
+)
+parser.add_argument(
+    "--dow-filter",
+    help="Wheter to apply day of week (DOW) combination requirement to "
+    "a market. If market has not been shopped for all combinations of "
+    "DOW of travel in data, it will be excluded.",
+    action="store_true",
+    default=False,
+)
+parser.add_argument(
+    "--rsd",
+    help="Relative standard deviation (RSD) reqirement by market. "
+    "If market's RSD data is > than this value, it will be excluded. "
+    "If this param is set to 0, filter will not be applied. Default = 0",
+    type=int,
+    default=0,
+)
+parser.add_argument(
+    "--rank",
+    help="Filter out market outside the top rank by volume. "
+    "If this param is set to 0, filter will not be applied. Default = 0",
+    type=int,
+    default=0,
+)
+parser.add_argument(
+    "--stale-after",
+    help="Exclude data older than this many days old. "
+    "If this param is set to 0, restriction will not be applied. Default = 0",
+    type=int,
+    default=0,
+)
+parser.add_argument(
+    "--input-dir", "-i",
+    help="Directory (in HDFS) containing input data",
+    default="/user/kendra.frederick/shop_vol/v7/US-pos_extra-days/"
 )
 args = parser.parse_args()
 
-run_mode = args.run_mode
+prev_val_ratio = args.prev_val_ratio
+ratio_median = args.ratio_median
+shop_counts_threshold = args.shop_counts
+dow_filter = args.dow_filter
+rsd = args.rsd
+rank = args.rank
+stale_after = args.stale_after
+input_dir = args.input_dir
 
-if run_mode == "manual":
-    print("Sorry, can't do that yet")
-    sys.exit(0)
+no_filters = (
+    (prev_val_ratio == 0)
+    & (ratio_median == 0)
+    & (dow_filter is False)
+    & (rsd == 0)
+    & (rank == 0)
+)
+
+# derive shopping date cutoff
+# assumes
+shop_date_cutoff = datetime.date.today() - datetime.timedelta(days=stale_after)
+
 
 
 APP_NAME = "generate-calendar-predictions"
@@ -73,13 +142,18 @@ def add_dow_ind(df):
     return df
 
 
-def filter_anoms_high(df, ratio_threshold, shop_counts_threshold):
-    # filter out anomalies
-    # ----------------
-    ## An anomaly is defined as being higher than X-fold of the median
-    ## value for that market's min fares *and* having shop counts below
-    ## a threshold. We exclude that datapoint from further calculations.
+def filter_prev_val_ratio(df, prev_val_ratio):
+    """Filter out data based on its ratio to the previous value."""
+    pass
 
+
+def filter_ratio_median(df, ratio_median, shop_counts_threshold=0):
+    """Filter out high-fare anomalous data based on ratio to the median.
+
+    An anomaly is defined as being higher than X-fold of the median
+    value for that market's min fares *and* having shop counts below
+    a threshold. We exclude that datapoint from further calculations.
+    """
     w = Window.partitionBy("market")
     df = df.withColumn(
         "median", F.expr("percentile_approx(min_fare, 0.5)").over(w)
@@ -90,25 +164,24 @@ def filter_anoms_high(df, ratio_threshold, shop_counts_threshold):
     )
     if shop_counts_threshold > 0:
         df_filt_anom = df.filter(
-                ~((F.col("z_score") >= ratio_threshold)
+                ~((F.col("z_score") >= ratio_median)
                 & (F.col("shop_counts") < shop_counts_threshold))
                 )
     else:
          df_filt_anom = df.filter(
-                (F.col("z_score") < ratio_threshold)
+                (F.col("z_score") < ratio_median)
          )
                   
     return df_filt_anom
 
 
 def filter_rsd(df, rsd_threshold):
-    # filter on RSD
-    # -------------------
-    ## RSD = relative standard deviation
-    ## here, calculated by market. So, if a market's std dev is > 150% 
-    ## of its mean,  we exclude that market
+    """Filter out market based on its RSD.
 
-    # Note: these calcs should be done after any anomaly filtering
+    RSD = relative standard deviation = stddev / mean
+
+    Note: these calcs should be done after any anomaly filtering
+    """
     market_fare_stats = (df
                         .groupBy("market")
                         .agg(
@@ -126,10 +199,11 @@ def filter_rsd(df, rsd_threshold):
 
 
 def filter_dow_combo(df, combo_count=49):
-    # filter on markets that have all DOW combo's of travel
-    # ---------------
-    # Note: these operations can be done on either df or df_filt_anom (I think)
+    """Filter out markets that do not have all DOW combo's of travel
 
+    DOW = days of week. All combinations refers to departure date and return
+    dates of travel.
+    """
     mrkt_dow_cnts = df.groupBy("market", "dept_dt_dow_int", "ret_dt_dow_int").count()
     mrkt_dow_cnts2 = mrkt_dow_cnts.groupBy("market").count()
 
@@ -139,8 +213,7 @@ def filter_dow_combo(df, combo_count=49):
 
 
 def filter_rank(df, rank):
-    # filter on "top" markets
-    # ----------------
+    """Filter markets based on volume rank."""
     top_rank = rank
 
     market_cnts = (df
@@ -161,25 +234,29 @@ def filter_rank(df, rank):
 
 # LOAD DATA
 print("Reading data")
-df = spark.read.parquet(hdfs_input_dir)
-df = add_dow_ind(df)
+df = spark.read.parquet(input_dir)
+
+if stale_after > 0:
+    df = df.filter(F.col("searchDt_dt") >= shop_date_cutoff)
+
 df.cache()
 
 print("Applying filters & restrctions")
 df_mod = df.select("*")
 if dow_filter:
+    df = add_dow_ind(df)
     df_mod = filter_dow_combo(df_mod)
 
-if zscore_filter:
-    df_mod = filter_anoms_high(
-        df_mod, zscore_threshold, shop_counts_threshold
+if ratio_median != 0:
+    df_mod = filter_ratio_median(
+        df_mod, ratio_median, shop_counts_threshold
     )
 
-if rsd_filter:
-    df_mod = filter_rsd(df_mod, rsd_threshold)
+if rsd != 0:
+    df_mod = filter_rsd(df_mod, rsd)
 
-if rank_filter:
-    df_mod = filter_rank(df_mod, rank_threshold)
+if rank != 0:
+    df_mod = filter_rank(df_mod, rank)
 
 
 # select most recent
@@ -195,13 +272,20 @@ df_most_recent = df_with_recency.filter(F.col("recency_rank") == 1)
 
 df_most_recent.show(5)
 
+# num_part = 10 if no_filters else 5
+num_part = 5 # good enough for both cases
+
 # write to HDFS csv
+# alt: coalesce to 5, write to parquet
+# then reload and save as single .csv file
+# saving directly to a single-partition .csv file doesn't work
+# (get an OOM)
 print("Writing data to file")
 (df_most_recent
  .select(cols_to_write)
- .coalesce(5) # 2 partitions started to hang; 1 crashes
+ .coalesce(num_part) # convert this to repartition?
  .write.mode("overwrite")
- .csv(hdfs_output_dir + "/US-USD", header=True)
+ .csv(output_dir + "/US-USD", header=True)
 )
 
 script_end_time = datetime.datetime.now()

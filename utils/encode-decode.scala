@@ -196,6 +196,7 @@ df3.write.partitionBy("searchDt").mode("overwrite").parquet(out_dir)
 
 // ====================================
 // ESTREAMING MIDT_1_5 FORMAT
+// "new" output format
 // selectively process only certain date subfolders
 
 import com.tvlp.cco.util.Utils.UDFs._

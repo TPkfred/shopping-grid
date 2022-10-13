@@ -33,7 +33,7 @@ eStreaming data found on dev HDFS is used as input, which is in a format to make
 - input: hdfs: /data/estreaming/midt_1_5 & /data/estreaming/midt_1_5
     - Note: only ~21 days are retained
     - Note: as of 10/01/2022, data are being saved to the latter path
-- current ETL script: `estream_analysis_pos.py`
+- current ETL script: `agg_estream_data.py`
 - location:
     - local: ./scripts/etl
     - shldvfsdh016.tvlport.net: /home/kendra.frederick/shopping_grid

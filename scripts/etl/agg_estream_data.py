@@ -1,9 +1,14 @@
 
 """
-Analyze coverage and lowest fare by market & POS in eStreaming data.
+Aggregate coverage and lowest fare by market & POS in eStreaming data.
 
-- Data grouped by market and other columns and agg'd for:
-    - Boolean shop + volume counts for data coverage analysis
+- Data grouped by:
+    - market (Origin + Destination airport)
+    - POS
+    - currency
+    - travel dates
+- Agg'd for:
+    - Shopping volume
     - Lowest fare
 - Restrictions
     - passenger type = ADT
@@ -28,10 +33,10 @@ import argparse
 # VARIABLE DEFINITIONS
 # these will likely because arguments some day
 
-APP_NAME = "KF-ShoppingGrid"
-data_dir = "/data/estreaming/midt_1_5/"
+APP_NAME = "KF-AggShoppingData"
+data_dir = "/data/estreaming/midt_1_5_pn/"
 # /raw gets added below
-grid_out_dir = "/user/kendra.frederick/shop_vol/v7/"
+grid_out_dir = "/user/kendra.frederick/shop_vol/v8/"
 
 
 # ========================
@@ -87,6 +92,7 @@ start_dt = datetime.datetime.strptime(shop_start_str, "%Y-%m-%d")
 end_dt = datetime.datetime.strptime(shop_end_str, "%Y-%m-%d")
 
 script_start_time = datetime.datetime.now()
+print("*****************************")
 print("{} - Starting script".format(script_start_time.strftime("%Y-%m-%d %H:%M")))
 print("Processing shopping days {} to {} (inclusive)".format(shop_start_str, shop_end_str))
 print("Analyzing these POS's: {}".format(pos_list_str))
@@ -159,6 +165,9 @@ def data_preprocessing(df_raw):
         # move this here to restrict data size before we explode
     pos_filt = tt_filt.filter(F.col("pos").isin(pos_list))
 
+    # added 10/12/2022, after switching to processing midt_1_5_pn data
+    pos_filt = pos_filt.coalesce(200)
+
     # explode PTC and fare & match their position
     df_expl = (pos_filt
         .select("*",  F.posexplode("responsePTC").alias("ptc_pos", "PTC"))
@@ -192,7 +201,7 @@ def grid_analysis(df_preproc, date_str):
     )
     
     day_df = df_agg.withColumn("searchDt", F.lit(date_str))
-    day_df.show(5)
+    # day_df.show(5)
     if include_pcc:
         num_partitions = 6
         save_path = grid_out_dir + "raw_with_pcc/" + date_str
@@ -200,6 +209,7 @@ def grid_analysis(df_preproc, date_str):
         num_partitions = 3
         save_path = grid_out_dir + "raw/" + date_str
 
+    print("Writing data")
     # with switch to partitioning data by day, write mode can be overwrite (not append)
     day_df.repartition(num_partitions).write.mode("overwrite").parquet(save_path)
     
@@ -228,11 +238,14 @@ def daily_analysis(date):
         loop_start.strftime("%Y-%m-%d %H:%M"), date_str))
     try:
         df_raw = spark.read.parquet(hdfs_path)
+        print("Done reading raw data")
+        check_time = datetime.datetime.now()
+        elapsed_time = (check_time - loop_start).total_seconds() / 60
+        print("Elapsed time: {:.02f} minutes".format(elapsed_time))
     except:
         print("COULD NOT LOAD/FIND {}. skipping.".format(hdfs_path))
         return None
-    print("Done reading raw data")
-
+    
     df_preproc = data_preprocessing(df_raw)
     grid_analysis(df_preproc, date_str)
 
@@ -253,3 +266,5 @@ for date in date_list:
 script_end_time = datetime.datetime.now()
 elapsed_time = (script_end_time - script_start_time).total_seconds() / 60   
 print("Total elapsed time: {:.02f} minutes".format(elapsed_time))
+print("*****************************")
+print("")
