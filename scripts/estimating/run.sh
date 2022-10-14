@@ -7,7 +7,7 @@ script_dir="/home/kendra.frederick/shopping_grid/estimating"
 hdfs_output_dir="/user/kendra.frederick/tmp/calendar_data"
 
 # TODO: update this once get location from Jon
-# local_output_dir="/projects/app/XXX"
+# local_output_dir="/projects/apps/cco/FlightCalendarUpload"
 local_output_dir="/home/kendra.frederick/tmp"
 
 nohup spark-submit \
@@ -18,8 +18,9 @@ nohup spark-submit \
     --master yarn \
     --conf spark.pyspark.python=python2 \
     --conf spark.pyspark.driver.python=python2 \
-    $script_dir/generate_output_file.py --run-mode config >> $script_dir/stdout.txt 2> $script_dir/stderr.txt
+    $script_dir/generate_output_file.py --run-mode config > $script_dir/stdout.txt 2> $script_dir/stderr.txt
 
 echo "Fetching file from HDFS"
 hdfs dfs -get $hdfs_output_dir $local_output_dir
 echo "Done"
+

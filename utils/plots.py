@@ -239,7 +239,7 @@ def heatmap_min_fare_by_dow(market_pdf, market):
     plt.show()
 
 
-def generic_bar_chart(df, data_col, label_col=None, rotate_labels=False):
+def generic_bar_chart(df, data_col, label_col=None, rotate_labels=False, title=None):
     xs = range(len(df))
     plt.bar(xs, df[data_col])
     if label_col:
@@ -248,4 +248,36 @@ def generic_bar_chart(df, data_col, label_col=None, rotate_labels=False):
     if rotate_labels:
         plt.xticks(rotation=90)
     plt.ylabel(data_col)
+    plt.title(title)
 
+
+
+# HISTOGRAM FROM SPARK DATA
+
+from pyspark.ml.feature import Bucketizer
+# example split_vals: 
+# start with some nice intervals
+split_vals = np.linspace(0, 1, 11)
+# expand the right tail
+split_vals = np.concatenate((split_vals, np.array([5., 10., 50., 100., 1000.])))
+
+
+def histo_from_spark(df, spilt_vals, data_col, dropna=True):
+    bucketizer = Bucketizer(splits=split_vals, inputCol=data_col, outputCol="bucket")
+    if dropna:
+        df_bin = bucketizer.transform(df.dropna(subset=[data_col]))
+    else:
+        df_bin = bucketizer.transform(df)
+
+    hist_data = df_bin.groupBy("bucket").count().orderBy("bucket")
+    hist_data_pdf = hist_data.toPandas()
+
+    if not dropna:
+        hist_data_pdf['llim'] = split_vals[:-1]
+        hist_data_pdf['ulim'] = split_vals[1:]
+        hist_data_pdf['label'] = hist_data_pdf['llim'].astype('str') + "_" + hist_data_pdf['ulim'].astype('str')
+        label_col = 'label'
+    else:
+        label_col = 'bucket'
+
+    generic_bar_chart(hist_data_pdf, 'count', label_col, True, data_col)

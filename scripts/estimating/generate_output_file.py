@@ -38,7 +38,7 @@ print("{} - Starting script".format(script_start_time.strftime("%Y-%m-%d %H:%M")
 parser = argparse.ArgumentParser(description="Apply filters and "
     "restrictions to data, and evaluate feature(s). Note that the "
     "arguments below control whether a restriction/fitler is applied "
-    "but their threshold values are defined in a config yaml file.")
+    "but their threshold values are defined in a config file.")
 parser.add_argument(
     "--run-mode",
     help="Run-mode",
@@ -99,7 +99,6 @@ def filter_anoms_high(df, ratio_threshold, shop_counts_threshold):
          )
                   
     return df_filt_anom
-
 
 
 def filter_rsd(df, rsd_threshold):
@@ -182,6 +181,7 @@ if rsd_filter:
 if rank_filter:
     df_mod = filter_rank(df_mod, rank_threshold)
 
+
 # select most recent
 w = (Window
         .partitionBy('market', 'outDeptDt', 'inDeptDt')
@@ -193,12 +193,13 @@ df_with_recency = (df_mod
 
 df_most_recent = df_with_recency.filter(F.col("recency_rank") == 1)
 
+df_most_recent.show(5)
 
 # write to HDFS csv
 print("Writing data to file")
 (df_most_recent
  .select(cols_to_write)
- .coalesce(1)
+ .coalesce(5) # 2 partitions started to hang; 1 crashes
  .write.mode("overwrite")
  .csv(hdfs_output_dir + "/US-USD", header=True)
 )
