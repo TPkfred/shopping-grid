@@ -93,7 +93,7 @@ end_dt = datetime.datetime.strptime(shop_end_str, "%Y-%m-%d")
 
 script_start_time = datetime.datetime.now()
 print("*****************************")
-print("{} - Starting script".format(script_start_time.strftime("%Y-%m-%d %H:%M")))
+print("{} - Starting Data Aggregation Script".format(script_start_time.strftime("%Y-%m-%d %H:%M")))
 print("Processing shopping days {} to {} (inclusive)".format(shop_start_str, shop_end_str))
 print("Analyzing these POS's: {}".format(pos_list_str))
 print("Saving coverage & fare analysis to: {}".format(grid_out_dir))
@@ -180,9 +180,9 @@ def data_preprocessing(df_raw):
     return df_adt
     
 
-def grid_analysis(df_preproc, date_str):
+def data_agg(df_preproc, date_str):
     func_start = datetime.datetime.now()
-    print("Starting grid analysis")
+    print("Starting data aggregation")
     
     # add a market key to aid in joining
     df_preproc = df_preproc.withColumn(
@@ -215,7 +215,7 @@ def grid_analysis(df_preproc, date_str):
     
     func_end = datetime.datetime.now()
     elapsed_time = (func_end - func_start).total_seconds() / 60
-    print("Done with grid analysis. Elasped time: {}".format(elapsed_time))
+    print("Done with aggregation. Elasped time: {}".format(elapsed_time))
     print("")
 
 
@@ -234,20 +234,19 @@ def daily_analysis(date):
     date_str = date.strftime("%Y%m%d")
     hdfs_path = "hdfs://" + data_dir + date_str + "/" + "*"
 
-    print("{} - starting to process data for {}".format(
+    print("{} - Starting to process data for {}".format(
         loop_start.strftime("%Y-%m-%d %H:%M"), date_str))
     try:
         df_raw = spark.read.parquet(hdfs_path)
-        print("Done reading raw data")
         check_time = datetime.datetime.now()
         elapsed_time = (check_time - loop_start).total_seconds() / 60
-        print("Elapsed time: {:.02f} minutes".format(elapsed_time))
+        print("Done reading raw data - Elapsed time: {:.02f} minutes".format(elapsed_time))
     except:
         print("COULD NOT LOAD/FIND {}. skipping.".format(hdfs_path))
         return None
     
     df_preproc = data_preprocessing(df_raw)
-    grid_analysis(df_preproc, date_str)
+    data_agg(df_preproc, date_str)
 
     loop_end = datetime.datetime.now()
     elapsed_time = (loop_end - loop_start).total_seconds() / 60

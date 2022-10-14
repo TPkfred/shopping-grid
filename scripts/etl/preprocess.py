@@ -56,12 +56,6 @@ parser.add_argument(
     type=str,
     required=True
 )
-# parser.add_argument(
-#     "--trip-type",
-#     choices=("round-trip", "one-way"),
-#     help="Whether to process round-trips or one-ways",
-#     default="round-trip",
-# )
 parser.add_argument(
     "--min-stay-duration",
     help="Minimum length of stay / stay duration",
@@ -142,12 +136,14 @@ test = args.test
 # ========================
 
 script_start_time = datetime.datetime.now()
-print("------------------")
-print("{} - Starting script".format(script_start_time.strftime("%Y-%m-%d %H:%M")))
+print("*****************************")
+print("{} - Starting Preprocessing Script".format(script_start_time.strftime("%Y-%m-%d %H:%M")))
 print("Processing shop data from {} to {} (inclusive)".format
     (shop_start_str, shop_end_str)
 )
 print("Saving processed data to: {}".format(output_dir))
+# TODO: log other params (min/max stay duration, etc)
+print("Processing POS {}, currency {}".format(pos, currency))
 
 
 # SET UP SPARK
@@ -241,7 +237,7 @@ def filter_pos(df, pos, currency):
 # LOAD DATA
 # ========================
 
-print("Loading data")
+print("Reading data")
 
 # lookup
 airport_df = spark.read.csv("/user/contentoptimization/reference/content_manager/AIRPORT_FULL.CSV", header=True)
@@ -358,5 +354,7 @@ if test:
 )
 
 script_end_time = datetime.datetime.now()
-elapsed_time = (script_end_time - script_start_time).total_seconds() / 60   
-print("Total elapsed time: {:.02f} minutes".format(elapsed_time))
+elapsed_time = (script_end_time - script_start_time).total_seconds() / 60
+print("Done with preprocessing - Total elapsed time: {:.02f} minutes".format(elapsed_time))
+print("*****************************")
+print()

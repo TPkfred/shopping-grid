@@ -35,7 +35,9 @@ output_dir = "/user/kendra.frederick/tmp/calendar_data"
 
 
 script_start_time = datetime.datetime.now()
-print("{} - Starting script".format(script_start_time.strftime("%Y-%m-%d %H:%M")))
+print("*****************************")
+print("{} - Starting Lookup File Generation Script".format(script_start_time.strftime("%Y-%m-%d %H:%M")))
+
 
 
 parser = argparse.ArgumentParser(
@@ -136,6 +138,7 @@ currency = args.currency
 
 base_input_dir = "/user/kendra.frederick/shop_grid"
 input_dir = "{}/{}-{}".format(base_input_dir, pos, currency)
+print("Processing POS: {}, currency: {}".format(pos, currency))
 
 no_filters = (
     (prev_val_ratio == 0)
@@ -336,14 +339,14 @@ df_with_recency = (df_mod
 
 df_most_recent = df_with_recency.filter(F.col("recency_rank") == 1)
 
-df_most_recent.select(cols_to_write).show(5)
-print(df_most_recent.count())
+# df_most_recent.select(cols_to_write).show(5)
+print("Output data size: {}".format(df_most_recent.count()))
 
 num_part = 10 if no_filters else 5
 # num_part = 5 # good enough for both cases
 
 # write to HDFS csv
-print("Writing data to file")
+print("Writing data")
 (df_most_recent
  .select(cols_to_write)
  .coalesce(num_part) # haven't seen a need to convert this to repartition yet...
@@ -353,4 +356,6 @@ print("Writing data to file")
 
 script_end_time = datetime.datetime.now()
 elapsed_time = (script_end_time - script_start_time).total_seconds() / 60   
-print("Total elapsed time python script: {:.02f} minutes".format(elapsed_time))
+print("Done with output script - Total elapsed time: {:.02f} minutes".format(elapsed_time))
+print("*****************************")
+print()
