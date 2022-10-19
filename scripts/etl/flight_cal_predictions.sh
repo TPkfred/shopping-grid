@@ -1,25 +1,24 @@
 #! /bin/bash
 
 echo "STARTING FLIGHT CAL PREDICTIONS"
-# crontab settings on shldvfsdh016
-# script_dir=/data/16/kendra.frederick/scripts
-# 00 02 * * * nohup $kf_script_dir/flight_cal_predictions.sh --pos US --currency USD >> $kf_script_dir/fc-preds-stdout.txt 2>/dev/null &
 
 # where scripts are located
-script_dir=/data/16/kendra.frederick/scripts/
+script_dir=/projects/apps/cco/flightCalendarPredictions
 
 # variables we don't want/need to define as arguments
 ## don't provide predictions older than this many days
 staleness=30
+max_dtd=120
+max_los=21
 
 # temporary HDFS output directory
 # this must match `output_dir` in generate_output_file script
-hdfs_base_dir="/user/kendra.frederick/tmp/calendar_data"
+hdfs_base_dir="/tmp/calendar_data"
 
 # Define default values for arguments
 test=false
-# pos=US
-# currency=USD
+pos=US
+currency=USD
 
 # this is intended to be run nightly, on yesterday's data
 # but date can be supplied as an argument to override this
@@ -51,7 +50,7 @@ while [ "$1" != "" ]; do
     shift
 done     
 
-# where output / lookupfile gets downloaded to locally
+# where output / lookup file gets downloaded to locally
 if [[ $test = true ]]; then
     local_base_dir="/tmp/calendar_data"
 else
@@ -85,7 +84,7 @@ spark-submit \
     --conf spark.pyspark.driver.python=python2 \
     --conf "spark.yarn.executor.memoryOverhead=2g" \
     --jars /projects/apps/cco/estreamingTransformerStream/bin/estreammidtmerger_2.11-1.0.jar \
-    $script_dir/preprocess.py --shop-start $d --shop-end $d --pos $pos --currency $currency
+    $script_dir/preprocess.py --shop-start $d --shop-end $d --pos $pos --currency $currency --max-stay-duration $max_los --max-days-til-dept $max_dtd
 
 # generate output file
 spark-submit \
@@ -97,7 +96,7 @@ spark-submit \
     --conf spark.pyspark.python=python2 \
     --conf spark.pyspark.driver.python=python2 \
     --conf "spark.yarn.executor.memoryOverhead=2g" \
-    $script_dir/generate_output_file_with_args.py --pos $pos --currency $currency --stale-after $staleness 
+    $script_dir/generate_output_file_with_args.py --pos $pos --currency $currency --stale-after $staleness --ratio-mean 3
 
 # retrieve file from HDFS
 ## must first clear target dir
@@ -105,7 +104,11 @@ echo "Cleaning local output dir"
 rm -rf $local_output_dir
 echo "Fetching output file from HDFS"
 hdfs dfs -get $hdfs_output_dir $local_output_dir
+rm $local_output_dir/_SUCCESS
 ## add trigger file
 touch $local_base_dir/trigger.txt
 echo "Trigger file created"
+chmod -R 777 $local_base_dir/*
 echo "DONE!"
+echo ""
+echo ""
