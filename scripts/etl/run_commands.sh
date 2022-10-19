@@ -49,8 +49,8 @@ nohup spark-submit \
     --conf spark.pyspark.driver.python=python2 \
     --conf "spark.yarn.executor.memoryOverhead=2g" \
     --jars /projects/apps/cco/estreamingTransformerStream/bin/estreammidtmerger_2.11-1.0.jar \
-    preprocess.py --shop-start 2022-08-30 --shop-end 2022-09-20 --max-stay-duration 21 --max-days-til-dept 120 > pp_stdout.txt 2> /dev/null &
-
+    preprocess.py --shop-start 2022-09-21 --shop-end 2022-10-17 --max-stay-duration 21 --max-days-til-dept 120 > pp_stdout.txt 2> /dev/null &
+# --shop-start 2022-08-30 --shop-end 2022-09-20
 
 # -------------------------
 # old run code
