@@ -1,6 +1,6 @@
 # CURRENT RUN SCRIPTS
 
-# agg estreaming
+# agg estreaming - old data format
 nohup spark-submit \
     --driver-memory 30g \
     --num-executors 15 \
@@ -11,7 +11,7 @@ nohup spark-submit \
     --conf spark.pyspark.driver.python=python2 \
     /home/kendra.frederick/shopping_grid/agg_estream_data.py --run-mode spark-submit --shop-start 2022-10-02 --shop-end 2022-10-11 >> stdout.txt 2> stderr.txt &
 
-# try tuning param for /midt_1_5_pn format
+# tuning params for new /midt_1_5_pn format
     # this runs faster (15 min vs. 30 min) but still stalls out after
     # first day. Run in loop using `run_agg_loop.sh`
 nohup spark-submit \
@@ -38,6 +38,18 @@ nohup spark-submit \
     --jars /projects/apps/cco/estreamingTransformerStream/bin/estreammidtmerger_2.11-1.0.jar \
     /home/kendra.frederick/shopping_grid/preprocess.py --shop-start 2022-08-30 --shop-end 2022-09-20 > pp_stdout.txt 2> stderr.txt &
 
+# update dtd & LOS
+nohup spark-submit \
+    --driver-memory 20g \
+    --num-executors 10 \
+    --executor-memory 10g \
+    --executor-cores 5 \
+    --master yarn \
+    --conf spark.pyspark.python=python2 \
+    --conf spark.pyspark.driver.python=python2 \
+    --conf "spark.yarn.executor.memoryOverhead=2g" \
+    --jars /projects/apps/cco/estreamingTransformerStream/bin/estreammidtmerger_2.11-1.0.jar \
+    preprocess.py --shop-start 2022-08-30 --shop-end 2022-09-20 --max-stay-duration 21 --max-days-til-dept 120 > pp_stdout.txt 2> /dev/null &
 
 
 # -------------------------

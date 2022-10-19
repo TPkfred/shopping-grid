@@ -17,10 +17,6 @@ Notes / thoughts:
 import datetime
 import argparse
 from functools import reduce
-import sys
-import os
-# import numpy as np
-# import pandas as pd
 
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
@@ -69,6 +65,7 @@ parser.add_argument(
     "grid is 7x7 (departure and return date each +/- 3 days) and the max "
     "LOS allowed (difference between departure date & return data) is 7 "
     "days, then the max stay duration = 7 + 3 + 3 = 13",
+    type=int,
     default=13,
 )
 parser.add_argument(
@@ -109,10 +106,10 @@ parser.add_argument(
 args = parser.parse_args()
 
 min_stay_duration = args.min_stay_duration
-# add one to allow for shifted feature
+# add one to allow for shifted features
 max_stay_duration = args.max_stay_duration + 1 
 min_days_til_dept = args.min_days_til_dept
-# add one to allow for shifted feature
+# add one to allow for shifted features
 max_days_til_dept = args.max_days_til_dept + 1
 
 shop_start_str = args.shop_start
@@ -138,13 +135,18 @@ test = args.test
 script_start_time = datetime.datetime.now()
 print("*****************************")
 print("{} - Starting Preprocessing Script".format(script_start_time.strftime("%Y-%m-%d %H:%M")))
-print("Processing shop data from {} to {} (inclusive)".format
-    (shop_start_str, shop_end_str)
-)
-print("Saving processed data to: {}".format(output_dir))
+# print("Processing shop data from {} to {} (inclusive)".format
+#     (shop_start_str, shop_end_str)
+# )
 # TODO: log other params (min/max stay duration, etc)
-print("Processing POS {}, currency {}".format(pos, currency))
+# print("Processing POS {}, currency {}".format(pos, currency))
+print("Script arguments / params: {}".format(args))
+print("Saving processed data to: {}".format(output_dir))
 
+
+
+# import sys
+# sys.exit(0)
 
 # SET UP SPARK
 # -----------------------
@@ -262,20 +264,18 @@ cov_df1 = None
 cov_df2 = None
 cov_df_list = []
 
-# could also generate a set of date covered by this data source, and
-# check the intersection with `shop_date_range`, but this works as well
+# could also generate a set of dates covered by this data source, and
+# check the intersection with `shop_date_range`, but this works
 if shop_start_dt <= datetime.date(2022,9,20):
     input_dir1 = "/user/kendra.frederick/shop_vol/v7/decoded/"
     cov_df1 = spark.read.parquet(input_dir1).filter(F.col("searchDt").isin(shop_int_range))
 
 # v7 new format
-## in this format, we only process aggregated data for a range of dates, one
-## day at a time. The decoded data is saved to a corresponding folder 
-## based on the date being processed. Ex:
+## in this format, we decoded aggregated data one day at a time, and saved
+## to a corresponding folder based on the date. Ex:
 ## /user/kendra.frederick/shop_vol/v7/decoded_new_format/20220921
 ## Shopping data from 09/21/2022 - 09/29/2022 are saved in this format
 
-# if (shop_start_dt >= datetime.date(2022,9,21)) | (shop_start_dt <= datetime.date(2022,9,29)):
 v7_new_date_range = {datetime.date(2022,9,21) + datetime.timedelta(days=d) for d in range(9)}
 
 if len(shop_date_range.intersection(v7_new_date_range)) > 0:
@@ -286,8 +286,8 @@ if len(shop_date_range.intersection(v7_new_date_range)) > 0:
 
 
 # current ("v8")
-## Shopping data from 09/30/2022 onvwards are saved in this format / location.
-## They have not been decoded.
+## Shopping data from 09/30/2022 onwards are saved in this format / location.
+## They have not been decoded, so we do so here.
 
 if shop_end_dt >= datetime.date(2022,9,30):
     cov_df3 = spark.read.parquet(input_dir + "/*")
@@ -324,7 +324,7 @@ if shop_end_dt >= datetime.date(2022,9,30):
 
 # column order must be the same in order to `union` df's
 # Note: we don't need to check on cov_df3, because it's not possible
-# for df1 to be non-None, df2 to be None, and df3 to be non-None
+# for df1 to be not None, df2 to be None, and df3 to be not None
 if (cov_df1 is not None) & (cov_df2 is not None):
     cols_in_order = cov_df2.columns
     cov_df1 = cov_df1.select(cols_in_order)
@@ -357,4 +357,4 @@ script_end_time = datetime.datetime.now()
 elapsed_time = (script_end_time - script_start_time).total_seconds() / 60
 print("Done with preprocessing - Total elapsed time: {:.02f} minutes".format(elapsed_time))
 print("*****************************")
-print()
+print("")

@@ -31,7 +31,7 @@ cols_to_write = [
  'inDeptDt',
  'min_fare'
 ]
-output_dir = "/user/kendra.frederick/tmp/calendar_data"
+output_dir = "/tmp/calendar_data"
 
 
 script_start_time = datetime.datetime.now()
