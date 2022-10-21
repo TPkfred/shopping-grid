@@ -29,12 +29,12 @@ from pyspark.sql.window import Window
 # import numpy as np
 
 cols_to_write = [
- 'pos',
+ 'point_of_sale',
  'currency',
  'origin_city',
  'destination_city',
- 'outDeptDt',
- 'inDeptDt',
+ 'out_departure_date',
+ 'in_departure_date ',
  'min_fare'
 ]
 # output_dir = "/tmp/calendar_data"
