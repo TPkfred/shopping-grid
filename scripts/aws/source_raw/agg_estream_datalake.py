@@ -9,76 +9,32 @@ Estreaming data source = datalake format in AWS
 import os
 import datetime
 import argparse
-# from math import ceil
 
-# import pyspark
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
 import pyspark.sql.types as T 
 
 
-
 # ========================
 # VARIABLE DEFINITIONS
-# these will likely because arguments some day
 
 APP_NAME = "KF-ShoppingGrid"
-# data_dir = "/data/estreaming/datalake_1_5/"
-
-# TODO: derive full path from date supplied
-# for now, hard-code
-# data_dir = "s3://tvlp-ds-air-shopping-pn/v1_5/year=2022/month=10/day=20221019/hour=19/"
 data_dir = "s3://tvlp-ds-air-shopping-pn/v1_5"
-
-
-# grid_out_dir = "/user/kendra.frederick/shop_vol/v5_datalake/"
 out_dir = "s3://kendra-frederick/shopping-grid/agg-raw-data"
 
-# determined off-line / previously
-# opt_num_grid_parts = 3
-
 pos_list_str = ["US", "IN"]
-
-
-# ========================
-# SETUP SPARK
-
-# # so we can run using spark-submit or python 
-# if run_mode == "python":
-#     conf = pyspark.SparkConf().setAll(
-#         [('spark.master','yarn'),
-#         ('spark.app.name', APP_NAME),
-#         ('spark.driver.memory','30g'),
-#         ('spark.executor.memory', '20g'),
-#         ('spark.executor.instances', 10),
-#         ('spark.executor.cores', '5'),
-
-#         ])
-#     spark = SparkSession.builder.config(conf=conf).getOrCreate()
-# elif run_mode == "spark-submit":
-#     spark = SparkSession.builder.appName(APP_NAME).getOrCreate()
-# else:
-#     pass
-
-# ========================
-# ADDITIONAL VARIABLE DEFINTIONS
-
-# spark.sql("set spark.sql.files.ignoreCorruptFiles=true")
 
 groupby_cols = [
     'out_origin_airport',
     'out_destination_airport',
     'out_origin_city',
     'out_destination_city',
-    # NOTE: due to conditions imposed, we don't need in_ fields
     'point_of_sale', 
     'currency',
     'out_departure_date',
     'in_departure_date',
-    'round_trip', # not in source data; these get created/added below
+    'round_trip', # not in source data; gets created/added below
 ]
-
-
 
 
 # ========================
@@ -105,15 +61,14 @@ def parse_args():
     #     default=False,
     #     action="store_true"
     # )
+    parser.add_argument(
+        "--test", "-t",
+        help="Run in test mode",
+        default=False,
+        action="store_true"
+    )
     args = parser.parse_args()
     return args
-
-
-# # filters 
-# # for round-trip: outOrigin = inDest and outDest = inOrigin 
-# cond_rt = (((F.col("out_origin_airport") == F.col("in_destination_airport")) &
-#          (F.col("out_destination_airport") == F.col("in_origin_airport"))))
-# cond_ow = ((F.col("in_origin_airport").isNull()) & (F.col("in_destination_airport").isNull()))
 
 
 def data_preprocessing(df_raw):
@@ -195,35 +150,7 @@ def data_agg(df_preproc, date_str):
     print("")
 
 
-# def top_market_analysis(df_raw, date_str):
-#     # Note: we use "raw" data, without any filters. We just want to get a 
-#     # crude idea of what's being shopped for. This approach includes 
-#     # multi-city  trips, where out origin != in destination.
-#     func_start = datetime.datetime.now()
-#     print("Starting top market counts")
-#     save_path = top_markets_out_dir + date_str
-    
-#     df_agg = (df_raw
-#               .groupBy("out_origin_airport", "out_destination_airport")
-#               .agg(
-#                 F.count("id").alias("solution_counts"),
-#                 F.countDistinct("id").alias("num_unique_shops")
-#               )
-#               .orderBy(F.desc("num_unique_shops"))
-#               ).coalesce(1)
-#     day_df = df_agg.withColumn("date_str", F.lit(date_str))
-#     day_df.show(5)
-#     # ignore or overwite here? Could also add logic above to check if .csv
-#     # already exists and skip processing if it doesn.
-#     day_df.write.mode("overwrite").option("header", True).csv(save_path)
-    
-#     func_end = datetime.datetime.now()
-#     elapsed_time = (func_end - func_start).total_seconds() / 60
-#     print("Done with top market counts. Elasped time: {}".format(elapsed_time))
-#     print("")
-
-
-def daily_analysis(spark, date):
+def daily_analysis(spark, date, test):
     """Load data for `date`, perform analysis, and save results.
     
     params:
@@ -237,12 +164,10 @@ def daily_analysis(spark, date):
     loop_start = datetime.datetime.now()
     date_str = date.strftime("%Y%m%d")
     
-    # hdfs_path = "hdfs://" + data_dir + date_str + "/" + "*"
-    # TODO: remove hour from path
-    hdfs_path = "{}/year={}/month={}/day={}/hour=19/".format(data_dir, date.year, date.month, date_str)
-
-    # setting so we don't error out on corrupt files
-    # spark.sql("set spark.sql.files.ignoreCorruptFiles=true")
+    if test:
+        hdfs_path = "{}/year={}/month={}/day={}/hour=19/".format(data_dir, date.year, date.month, date_str)
+    else:
+        hdfs_path = "{}/year={}/month={}/day={}".format(data_dir, date.year, date.month, date_str)
 
     print("{} - starting to process data for {}".format(
         loop_start.strftime("%Y-%m-%d %H:%M"), date_str))
@@ -270,9 +195,14 @@ def daily_analysis(spark, date):
 
 if __name__ == "__main__":
     args = parse_args()
+    test = args.test
 
-    shop_start_str = args.shop_start
-    shop_end_str = args.shop_end
+    if test:
+        shop_start_str = "2022-10-19"
+        shop_end_str = "2022-10-19"
+    else:
+        shop_start_str = args.shop_start
+        shop_end_str = args.shop_end
 
     start_dt = datetime.datetime.strptime(shop_start_str, "%Y-%m-%d")
     end_dt = datetime.datetime.strptime(shop_end_str, "%Y-%m-%d")
@@ -293,7 +223,7 @@ if __name__ == "__main__":
 
     with SparkSession.builder.appName(APP_NAME).getOrCreate() as spark:
         for date in date_list:
-            daily_analysis(spark, date)
+            daily_analysis(spark, date, test)
 
     script_end_time = datetime.datetime.now()
     elapsed_time = (script_end_time - script_start_time).total_seconds() / 60   

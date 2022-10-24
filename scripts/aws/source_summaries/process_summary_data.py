@@ -1,16 +1,15 @@
 """
-Pre-processes summarized eStreaming / air shopping data in support of 
-downstream processing related to modeling, caching, and analysis.
+Processes summarized eStreaming / air shopping data and generate
+an "output" file of "predictions" to suppor the Lowest Fare Calendar.
 
-- filters on POS and currency
-    - O or D in POS country
 - converts data types
-- creates of 'days until departure' (dtd) and 'stay duration' 
-    (or length of stay, LOS) features and filters on them
+- filters on POS, currency, and O or D in POS country
+- creates of 'days until departure' (dtd) filters on it
+- filters on los (length of stay)
 
-Notes / thoughts:
-- In the future, we may want to *not* filter on dtd and LOS here, 
-    but rather keep data less restricted
+Version notes:
+- derived from `aws_preprocess.py` and `aws_generate_output.py`. Combined
+    these two scripts into a single one to simplify execution.
 """
 
 import os
@@ -24,11 +23,15 @@ import pyspark.sql.types as T
 from pyspark.sql.window import Window
 
 
+# ========================
+# VARIABLES 
+# ========================
 APP_NAME = "CalendarPredictions"
 
 BASE_INPUT_DIR = "s3://tvlp-ds-lead-price-archives"
 BASE_OUTPUT_DIR = "s3://tvlp-ds-lead-price-predictions"
 AIRPORT_LOOKUP_PATH = "s3://kendra-frederick/reference-data/AIRPORT.CSV"
+TEST_DIR = "s3://kendra-frederick/test/calendar-predictions"
 
 DATE_FORMAT = "%Y-%m-%d"
 FILE_SIZE_LIMIT_ROWS = 5e5
@@ -225,6 +228,7 @@ def get_most_recent(df):
 
     return df_most_recent
 
+
 if __name__ == "__main__":
     script_start_time = datetime.datetime.now()
 
@@ -253,20 +257,18 @@ if __name__ == "__main__":
 
     # variables derived from args
     if test:
-        output_dir = "s3://kendra-frederick/test"
+        output_dir = TEST_DIR
     else:
         output_dir = BASE_OUTPUT_DIR
     
-    # I don't think Jon cares what the pos & currency are, at least not in terms
-    # of where shit is saved
-    
-    # output_dir = "{}/{}-{}".format(BASE_OUTPUT_DIR, pos, currency)
-    
     # NOTE: Must only load thru yesterdays' data, otherwise input data
     # will be changing while we try to read & process it
-    shop_date_last = datetime.date.today() - datetime.timedelta(days=1)
-    shop_date_first = datetime.date.today() - datetime.timedelta(days=stale_after)
+    today = datetime.date.today()
+    shop_date_last = today - datetime.timedelta(days=1)
+    shop_date_first = today - datetime.timedelta(days=stale_after)
 
+    # partition output dir
+    output_dir = "{}/{}-{}_{}".format(output_dir, pos, currency, today.strftime("%Y-%m-%d"))
 
     # SET UP SPARK
     # ------------------------
@@ -279,7 +281,7 @@ if __name__ == "__main__":
 
     df = load_and_filter(shop_date_first, shop_date_last, spark)
 
-    # FILTER & DATA
+    # FILTER & PROCESS DATA
     # ----------------------------
     print("Processing data")
     pos_df = filter_pos(df, pos, currency)
@@ -309,12 +311,12 @@ if __name__ == "__main__":
         'origin',
         'destination',
         'departure_date',
-        'los ',
+        'los',
         'price'
     ]
     
     # Limit the number of records per file
-    num_parts = math.ceil(n/FILE_SIZE_LIMIT_ROWS) 
+    num_parts = int(math.ceil(n/FILE_SIZE_LIMIT_ROWS))
 
     print("Writing data")
     (df_most_recent

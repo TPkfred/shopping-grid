@@ -26,7 +26,6 @@ import pyspark.sql.functions as F
 import pyspark.sql.types as T
 from pyspark.sql.window import Window
 
-# import numpy as np
 
 cols_to_write = [
  'point_of_sale',
@@ -34,12 +33,15 @@ cols_to_write = [
  'origin_city',
  'destination_city',
  'out_departure_date',
- 'in_departure_date ',
+ 'in_departure_date',
  'min_fare'
 ]
-# output_dir = "/tmp/calendar_data"
-BASE_OUTPUT_DIR = "s3://tvlp-ds-lead-price-predictions"
+
 BASE_INPUT_DIR = "s3://kendra-frederick/shopping-grid/processed-agg-data"
+BASE_OUTPUT_DIR = "s3://tvlp-ds-lead-price-predictions"
+TEST_DIR = "s3://kendra-frederick/test/calendar-predictions"
+
+FILE_SIZE_LIMIT_ROWS = 5e5
 
 
 script_start_time = datetime.datetime.now()
@@ -122,6 +124,12 @@ def parse_args():
         "If this param is set to 0, filter will not be applied. Default = 0",
         type=int,
         default=0,
+    )
+    parser.add_argument(
+        "--test", "-t",
+        help="Run in test mode",
+        default=False,
+        action="store_true"
     )
     args = parser.parse_args()
     return args
@@ -273,8 +281,23 @@ if __name__ == "__main__":
     pos = args.pos
     currency = args.currency
 
+    test = args.test
+
+    # derive shopping date cutoff
+    ## assumes input data is current through today / yesterday
+    today = datetime.date.today()
+    shop_date_cutoff = today - datetime.timedelta(days=stale_after)
+    
     input_dir = "{}/{}-{}".format(BASE_INPUT_DIR, pos, currency)
-    output_dir = "{}/{}-{}".format(BASE_OUTPUT_DIR, pos, currency)
+
+    if test:
+        output_dir = TEST_DIR
+        input_dir += "-test"
+    else:
+        output_dir = BASE_OUTPUT_DIR
+
+    output_dir = "{}/raw_{}-{}_{}".format(output_dir, pos, currency, today.strftime("%Y-%m-%d"))
+
 
     print("Processing POS: {}, currency: {}".format(pos, currency))
 
@@ -287,11 +310,6 @@ if __name__ == "__main__":
         & (rank == 0)
     )
 
-    # derive shopping date cutoff
-    # assumes input data is current through today / yesterday
-    shop_date_cutoff = datetime.date.today() - datetime.timedelta(days=stale_after)
-    # shop_date_cutoff_int = int(shop_date_cutoff.strftime("%Y%m%d"))
-
     spark = SparkSession.builder.appName(APP_NAME).getOrCreate()
 
     # LOAD DATA
@@ -302,8 +320,8 @@ if __name__ == "__main__":
         df = df.filter(F.col("searchDt_dt") >= shop_date_cutoff)
 
     # modify "market"
-        # prior: defined by airport
-        # now: defined by city
+    ## prior: defined by airport
+    ## now: defined by city
     df = df.withColumn("market", 
             F.concat_ws("-", F.col("origin_city"), F.col("destination_city"))
     )
@@ -348,13 +366,13 @@ if __name__ == "__main__":
     print("Output data size: {}".format(n))
 
     # Want < 500,000 records per file
-    num_parts = math.ceil(n/5e5) 
+    num_parts = int(math.ceil(n/FILE_SIZE_LIMIT_ROWS))
 
     # write to HDFS csv
     print("Writing data")
     (df_most_recent
     .select(cols_to_write)
-    .coalesce(num_parts) # haven't seen a need to convert this to repartition yet...
+    .repartition(num_parts)
     .write.mode("overwrite")
     .csv(output_dir, header=True)
     )

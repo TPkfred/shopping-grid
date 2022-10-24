@@ -25,8 +25,6 @@ import pyspark.sql.types as T
 
 APP_NAME = "KF-ProcessAggdShopData"
 
-# input_dir = "/user/kendra.frederick/shop_vol/v8/raw"
-# output_dir = "/user/kendra.frederick/shop_grid/"
 BASE_INPUT_DIR = "s3://kendra-frederick/shopping-grid/agg-raw-data"
 BASE_OUTPUT_DIR = "s3://kendra-frederick/shopping-grid/processed-agg-data"
 AIRPORT_LOOKUP_PATH = "s3://kendra-frederick/reference-data/AIRPORT.CSV"
@@ -130,12 +128,6 @@ def preprocess_data(df, min_days_til_dept, max_days_til_dept,
         .withColumnRenamed("out_destination_airport", "destination")
         .withColumnRenamed("out_origin_city", "origin_city")
         .withColumnRenamed("out_destination_city", "destination_city")
-        # reorder so it looks nice
-        .select("market",  "origin", "destination", "round_trip",
-            "point_of_sale", "currency", 
-            "out_departure_date", "in_departure_date", "searchDt_dt", 
-            "min_fare"
-            )
     )
     
     # convert dates (which are ints) to datetime
@@ -160,7 +152,6 @@ def preprocess_data(df, min_days_til_dept, max_days_til_dept,
 
     # add stay_duration column & filter on it
         # note we keep 'Null' values, which correspond to one-ways
-        # TODO: **make sure the filter logic still works!**
     df_filt = (df_filt
         .withColumn('stay_duration', F.datediff(
                         F.col('inDeptDt_dt'), F.col('outDeptDt_dt')))
@@ -220,18 +211,18 @@ def load_process_write_data(date, spark):
     # PROCESS DATA
     # ----------------------------
     print("Processing data")
-    pos_df = filter_pos(df, pos, currency)
-    proc_df = preprocess_data(pos_df, min_days_til_dept, max_days_til_dept,
+    proc_df = preprocess_data(df, min_days_til_dept, max_days_til_dept,
         min_stay_duration, max_stay_duration)
+    pos_df = filter_pos(proc_df, pos, currency)
 
     print("Writing data")
     output_dir = "{}/{}-{}".format(BASE_OUTPUT_DIR, pos, currency)
     if test:
         output_dir += "-test"
-    (proc_df
+    (pos_df
         .repartition(1)
         .write
-        .partitionBy("searchDt")
+        .partitionBy("searchDt_dt")
         .mode(write_mode)
         .parquet(output_dir)
     )
