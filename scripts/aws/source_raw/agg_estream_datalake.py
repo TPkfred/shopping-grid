@@ -20,7 +20,7 @@ import pyspark.sql.types as T
 
 APP_NAME = "KF-ShoppingGrid"
 data_dir = "s3://tvlp-ds-air-shopping-pn/v1_5"
-out_dir = "s3://kendra-frederick/shopping-grid/agg-raw-data"
+out_dir = "s3://tvlp-ds-users/kendra-frederick/shopping-grid/agg-raw-data"
 
 pos_list_str = ["US", "IN"]
 

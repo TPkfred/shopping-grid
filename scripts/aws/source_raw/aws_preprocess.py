@@ -25,9 +25,9 @@ import pyspark.sql.types as T
 
 APP_NAME = "KF-ProcessAggdShopData"
 
-BASE_INPUT_DIR = "s3://kendra-frederick/shopping-grid/agg-raw-data"
-BASE_OUTPUT_DIR = "s3://kendra-frederick/shopping-grid/processed-agg-data"
-AIRPORT_LOOKUP_PATH = "s3://kendra-frederick/reference-data/AIRPORT.CSV"
+BASE_INPUT_DIR = "s3://tvlp-ds-users/kendra-frederick/shopping-grid/agg-raw-data"
+BASE_OUTPUT_DIR = "s3://tvlp-ds-users/kendra-frederick/shopping-grid/processed-agg-data"
+AIRPORT_LOOKUP_PATH = "s3://tvlp-ds-users/kendra-frederick/reference-data/AIRPORT.CSV"
 
 DATE_FORMAT = "%Y-%m-%d"
 

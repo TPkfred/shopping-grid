@@ -37,9 +37,9 @@ cols_to_write = [
  'min_fare'
 ]
 
-BASE_INPUT_DIR = "s3://kendra-frederick/shopping-grid/processed-agg-data"
+BASE_INPUT_DIR = "s3://tvlp-ds-users/kendra-frederick/shopping-grid/processed-agg-data"
 BASE_OUTPUT_DIR = "s3://tvlp-ds-lead-price-predictions"
-TEST_DIR = "s3://kendra-frederick/test/calendar-predictions"
+TEST_DIR = "s3://tvlp-ds-users/kendra-frederick/test/calendar-predictions"
 
 FILE_SIZE_LIMIT_ROWS = 5e5
 

@@ -30,7 +30,7 @@ APP_NAME = "CalendarPredictions"
 
 BASE_INPUT_DIR = "s3://tvlp-ds-lead-price-archives"
 BASE_OUTPUT_DIR = "s3://tvlp-ds-lead-price-predictions"
-AIRPORT_LOOKUP_PATH = "s3://kendra-frederick/reference-data/AIRPORT.CSV"
+AIRPORT_LOOKUP_PATH = "s3://tvlp-ds-users/kendra-frederick/reference-data/AIRPORT.CSV"
 TEST_DIR = "s3://kendra-frederick/test/calendar-predictions"
 
 DATE_FORMAT = "%Y-%m-%d"
