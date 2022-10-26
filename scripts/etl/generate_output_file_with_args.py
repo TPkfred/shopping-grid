@@ -13,31 +13,25 @@ Note that this script is designed to run on
 import datetime
 import argparse
 import os
-import sys
+import math
 
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
 import pyspark.sql.types as T
 from pyspark.sql.window import Window
 
-# import numpy as np
 
-cols_to_write = [
- 'pos',
- 'currency',
- 'origin_city',
- 'destination_city',
- 'outDeptDt',
- 'inDeptDt',
- 'min_fare'
-]
+# ========================
+# VARIABLES 
+# ========================
+
 output_dir = "/tmp/calendar_data"
+FILE_SIZE_LIMIT_ROWS = 5e5
 
 
 script_start_time = datetime.datetime.now()
 print("*****************************")
 print("{} - Starting Lookup File Generation Script".format(script_start_time.strftime("%Y-%m-%d %H:%M")))
-
 
 
 parser = argparse.ArgumentParser(
@@ -206,7 +200,7 @@ def filter_ratio_median(df, ratio_median, shop_counts_threshold=0):
     return df_filt_anom
 
 
-def filter_ratio_mean(df, ratio_mean):
+def filter_ratio_mean(df, ratio_mean, shop_counts_threshold=0):
     """Filter out data based on its ratio to its market's mean lowest fare.
 
     Only filters out high-fare anomalies.
@@ -298,7 +292,6 @@ if stale_after > 0:
 # modify "market"
     # prior: defined by airport
     # now: defined by city
-
 df = df.withColumn("market", 
         F.concat_ws("-", F.col("origin_city"), F.col("destination_city"))
 )
@@ -340,16 +333,30 @@ df_with_recency = (df_mod
 df_most_recent = df_with_recency.filter(F.col("recency_rank") == 1)
 
 # df_most_recent.select(cols_to_write).show(5)
-print("Output data size: {}".format(df_most_recent.count()))
+n = df_most_recent.count()
+print("Output data size: {}".format(n))
 
-num_part = 10 if no_filters else 5
-# num_part = 5 # good enough for both cases
+# num_part = 10 if no_filters else 5
+# # num_part = 5 # good enough for both cases
+
+# Limit the number of records per file
+num_parts = int(math.ceil(n/FILE_SIZE_LIMIT_ROWS))
+
+cols_to_write = [
+ 'pos',
+ 'currency',
+ 'origin_city',
+ 'destination_city',
+ 'outDeptDt',
+ 'inDeptDt',
+ 'min_fare'
+]
 
 # write to HDFS csv
 print("Writing data")
 (df_most_recent
  .select(cols_to_write)
- .coalesce(num_part) # haven't seen a need to convert this to repartition yet...
+ .repartition(num_parts) # changed 10/24/2022
  .write.mode("overwrite")
  .csv(output_dir + "/US-USD", header=True)
 )

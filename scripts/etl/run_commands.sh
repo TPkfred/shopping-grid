@@ -106,3 +106,6 @@ nohup spark-submit \
     --conf spark.pyspark.python=python2 \
     --conf spark.pyspark.driver.python=python2 \
     /home/kendra.frederick/shopping_grid/zero_min_fares.py > analysis_out.txt 2> analysis_err.txt &
+
+
+./run_gen_output.sh --pos US --currency USD >>rerun-stdout.txt 2> rerun-stderr.txt &
