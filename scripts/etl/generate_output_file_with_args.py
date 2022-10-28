@@ -12,7 +12,6 @@ Note that this script is designed to run on
 
 import datetime
 import argparse
-import os
 import math
 
 from pyspark.sql import SparkSession
@@ -36,7 +35,7 @@ print("{} - Starting Lookup File Generation Script".format(script_start_time.str
 
 parser = argparse.ArgumentParser(
     description="Generate lookup / 'prediction' file. Optionally applies "
-    " filters restrictions to data."
+    " filters & restrictions to data."
 )
 parser.add_argument(
     "--pos",
@@ -111,11 +110,6 @@ parser.add_argument(
     default=0,
 )
 
-# parser.add_argument(
-#     "--input-dir", "-i",
-#     help="Directory (in HDFS) containing input data",
-#     default="/user/kendra.frederick/shop_grid"
-# )
 args = parser.parse_args()
 
 prev_val_ratio = args.prev_val_ratio
@@ -237,8 +231,6 @@ def filter_rsd(df, rsd_threshold):
                         .agg(
                             F.mean("min_fare").alias("avg_min_fare"),
                             F.stddev("min_fare").alias("std_min_fare"),
-                            # F.min("min_fare").alias("min_min_fare"),
-                            # F.mean("min_fare").alias("max_min_fare"),
                         )
                     .withColumn("rsd", F.col("std_min_fare")/F.col("avg_min_fare"))
                     .dropna()
@@ -332,12 +324,8 @@ df_with_recency = (df_mod
 
 df_most_recent = df_with_recency.filter(F.col("recency_rank") == 1)
 
-# df_most_recent.select(cols_to_write).show(5)
 n = df_most_recent.count()
 print("Output data size: {}".format(n))
-
-# num_part = 10 if no_filters else 5
-# # num_part = 5 # good enough for both cases
 
 # Limit the number of records per file
 num_parts = int(math.ceil(n/FILE_SIZE_LIMIT_ROWS))
