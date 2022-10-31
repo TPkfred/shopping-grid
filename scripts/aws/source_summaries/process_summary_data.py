@@ -28,11 +28,6 @@ from pyspark.sql.window import Window
 # ========================
 APP_NAME = "CalendarPredictions"
 
-BASE_INPUT_DIR = "s3://tvlp-ds-lead-price-archives"
-BASE_OUTPUT_DIR = "s3://tvlp-ds-lead-price-predictions"
-AIRPORT_LOOKUP_PATH = "s3://tvlp-ds-users/kendra-frederick/reference-data/AIRPORT.CSV"
-TEST_DIR = "s3://kendra-frederick/test/calendar-predictions"
-
 DATE_FORMAT = "%Y-%m-%d"
 FILE_SIZE_LIMIT_ROWS = 5e5
 
@@ -43,6 +38,12 @@ FILE_SIZE_LIMIT_ROWS = 5e5
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--env", "-e",
+        help="Environment",
+        choices=["pp", "pn"],
+        required=True
+    )
     parser.add_argument(
         "--pos",
         help="Point of Sale two-letter code",
@@ -56,9 +57,9 @@ def parse_args():
     parser.add_argument(
         "--stale-after",
         help="Exclude data older than this many days old. "
-        "If this param is set to 0, restriction will not be applied. Default = 0",
+        "Default = 30",
         type=int,
-        default=0,
+        default=30,
     )
     parser.add_argument(
         "--min-stay-duration",
@@ -107,10 +108,27 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+def get_paths_from_env(env):
+    PATH_LOOKUP_DICT = {
+        "pn": {
+            "BASE_INPUT_DIR" : "s3://tvlp-ds-lead-price-archives",
+            "BASE_OUTPUT_DIR" : "s3://tvlp-ds-lead-price-predictions",
+            "AIRPORT_LOOKUP_PATH" : "s3://tvlp-ds-users/kendra-frederick/reference-data/AIRPORT.CSV",
+            "TEST_DIR" : "s3://tvlp-ds-users/kendra-frederick/test/calendar-predictions",
+        },
+        "pp": {
+            "BASE_INPUT_DIR" : "s3://tvlp-ds-lead-price-archives-pp",
+            "BASE_OUTPUT_DIR" : "s3://tvlp-ds-lead-price-predictions-pp",
+            "AIRPORT_LOOKUP_PATH" : "s3://tvlp-ds-users-pp/kendra-frederick/reference-data/AIRPORT.CSV",
+            "TEST_DIR" : "s3://tvlp-ds-users-pp/kendra-frederick/tmp/calendar-predictions",
+        },
+    }
+    return PATH_LOOKUP_DICT.get(env)
 
-def load_and_filter(shop_date_first, shop_date_last, spark):
+
+def load_and_filter(input_dir, shop_date_first, shop_date_last, spark):
     print("Reading data")
-    df = spark.read.parquet(BASE_INPUT_DIR)
+    df = spark.read.parquet(input_dir)
     
     df = (df
         .withColumn("shop_date", F.concat_ws("-", F.col("year"), F.col("month"), F.col("day")))
@@ -252,6 +270,12 @@ if __name__ == "__main__":
 
     test = args.test
 
+    path_dict = get_paths_from_env(args.env)
+    BASE_INPUT_DIR = path_dict.get("BASE_INPUT_DIR")
+    BASE_OUTPUT_DIR = path_dict.get("BASE_OUTPUT_DIR")
+    AIRPORT_LOOKUP_PATH = path_dict.get("AIRPORT_LOOKUP_PATH")
+    TEST_DIR = path_dict.get("TEST_DIR")
+
     print("Script arguments / params: {}".format(args))
     print("Saving processed data to: {}".format(BASE_OUTPUT_DIR))
 
@@ -267,9 +291,6 @@ if __name__ == "__main__":
     shop_date_last = today - datetime.timedelta(days=1)
     shop_date_first = today - datetime.timedelta(days=stale_after)
 
-    # partition output dir
-    output_dir = "{}/{}-{}_{}".format(output_dir, pos, currency, today.strftime("%Y-%m-%d"))
-
     # SET UP SPARK
     # ------------------------
     spark = SparkSession.builder.appName(APP_NAME).getOrCreate()
@@ -279,7 +300,7 @@ if __name__ == "__main__":
     airport_df = spark.read.option("header", "true").csv(AIRPORT_LOOKUP_PATH)
     city_df = airport_df.select("reference_city_code", "country_code").drop_duplicates()
 
-    df = load_and_filter(shop_date_first, shop_date_last, spark)
+    df = load_and_filter(BASE_INPUT_DIR, shop_date_first, shop_date_last, spark)
 
     # FILTER & PROCESS DATA
     # ----------------------------
@@ -315,6 +336,9 @@ if __name__ == "__main__":
         'price'
     ]
     
+    # define output dir based on params
+    output_path = "{}/{}-{}_{}".format(output_dir, pos, currency, today.strftime("%Y-%m-%d"))
+
     # Limit the number of records per file
     num_parts = int(math.ceil(n/FILE_SIZE_LIMIT_ROWS))
 
@@ -323,8 +347,8 @@ if __name__ == "__main__":
         .select(cols_to_write)
         .repartition(num_parts)
         .write
-        # .mode("overwrite") # not sure if S3 likes this
-        .csv(output_dir, header=True)
+        .mode("overwrite") # not sure if S3 likes this
+        .csv(output_path, header=True)
     )
 
     script_end_time = datetime.datetime.now()
