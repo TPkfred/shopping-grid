@@ -96,7 +96,7 @@ spark-submit \
     --conf spark.pyspark.python=python2 \
     --conf spark.pyspark.driver.python=python2 \
     --conf "spark.yarn.executor.memoryOverhead=2g" \
-    $script_dir/generate_output_file_with_args.py --pos $pos --currency $currency --stale-after $staleness --ratio-mean 3
+    $script_dir/generate_output_file_with_args.py --pos $pos --currency $currency --stale-after $staleness
 
 # retrieve file from HDFS
 ## must first clear target dir
