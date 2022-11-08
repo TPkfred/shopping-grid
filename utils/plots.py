@@ -281,3 +281,37 @@ def histo_from_spark(df, spilt_vals, data_col, dropna=True):
         label_col = 'bucket'
 
     generic_bar_chart(hist_data_pdf, 'count', label_col, True, data_col)
+
+
+
+
+def plot_bar_cum_pct(data_df, top_n, bar_data_col, line_data_col, order_col, x_label, what,
+    plot_title, file_name):
+    """Example:
+    bar_data_col = 'num_searches'
+    line_data_col = 'cum_pct_searches'
+    order_col = 'days_til_dept'
+    x_label = 'advanced purchase (days)'
+    top_n = 1000
+    what = 'Searches'
+    plot_title = 'Distribution of Searches by Advanced Purchase'
+    file_name = 'dtd-overlay'
+    """
+
+    data_df = data_df.sort_values(by=order_col)[:top_n]
+    data_bar = data_df[bar_data_col]
+    data_line = data_df[line_data_col]
+    xs = range(len(data_bar))
+
+    fig, ax = plt.subplots(figsize=(10,5))
+    ax.bar(xs, data_bar);
+    ax.set_ylabel(f"Num {what}")
+    ax.set_xlabel(x_label)
+
+    ax2 = ax.twinx()
+    ax2.plot(xs, data_line, marker=".", color="red")
+    ax2.set_ylim(0, 1)
+    ax2.set_ylabel(f"Cumulative % Total {what}")
+
+    fig.suptitle(plot_title)
+    plt.savefig(f"/tmp/{file_name}.png")
