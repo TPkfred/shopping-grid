@@ -85,7 +85,6 @@ def data_preprocessing(df_raw):
         F.when(cond_rt, 1).otherwise(0))
     
     # filter on POS
-        # move this here to restrict data size before we explode
     df_filt = df_filt.filter(F.col("point_of_sale").isin(pos_list_str))
 
     # filter out constricted searches (new to datalake format)
@@ -123,6 +122,7 @@ def data_agg(df_preproc, date_str):
     df_agg = (df_preproc
         .groupBy(groupby_cols)
         .agg(
+            # is this correct?
             F.countDistinct("id").alias("shop_counts"),
             F.min("fare_PTC").alias("min_fare")
         )
