@@ -5,22 +5,20 @@ Estreaming data source = datalake format in AWS
 (tvlp-ds-air-shopping-pn in ml-data-platform-pn)
 
 Version notes:
-- "poc" v2
-    - fix shop counts
-- "poc" (proof of concept, i.e. is accurate modeling feasible?)
-    - filter on:
-        - POS = 'US' & currency = 'USD'
-        - "top" markets
-    - do *not* filter on constricted searches
-    - add features (not aggregated on, but carried forward)
-        - constricted search
-        - carrier
-        - gds, pcc
-        - availability (boolean == 9 or not, etc)
-        - cities
+poc (proof of concept, i.e. is accurate modeling feasible?)
+- filter on:
+    - POS = 'US' & currency = 'USD'
+    - "top" markets
+- do *not* filter on constricted searches
+- add features (not aggregated on, but carried forward)
+    - constricted search
+    - carrier
+    - gds, pcc
+    - availability (boolean == 9 or not)
+- TBD: don't agg on city? (can add in later)
 
-- orig
-    - filter out constricted searches
+orig
+- filter out constricted searches
 """
 
 import os
@@ -38,23 +36,7 @@ from pyspark.sql.window import Window
 APP_NAME = "KF-ShoppingGrid"
 data_dir = "s3://tvlp-ds-air-shopping-pn/v1_5"
 out_dir = "s3://tvlp-ds-users/kendra-frederick/shopping-grid/agg-raw-data_poc"
-
-TOP_MARKETS = [
-    'LHR-JFK',
-    'LHR-EWR',
-    'JFK-LHR',
-    'EWR-LHR',
-    'EWR-CDG',
-    'LHR-LAX',
-    'LAX-JFK',
-    'LAX-EWR',
-    'JFK-LAX',
-    'SFO-LAX',
-    'LAX-SFO',
-    'LGA-MIA',
-    'ATL-EWR',
-    'OAK-LAS',
-]
+TOP_MARKET_DIR = "s3://tvlp-ds-users/kendra-frederick/reference-data/topUSmarkets.csv"
 
 groupby_cols = [
     'out_origin_airport',
@@ -64,12 +46,14 @@ groupby_cols = [
     # 'currency',
     'out_departure_date',
     'in_departure_date',
+    # not in source data; gets created/added below
 ]
 info_cols_raw = [
     'pcc', 'gds',
     'point_of_sale', 'currency',
     'out_origin_city', 'out_destination_city',
     'out_num_stops', 'in_num_stops',
+    # added this after running on 11/05/2022
     'constricted_search'
 ]
 info_cols_derived = [
@@ -117,6 +101,12 @@ def parse_args():
     return args
 
 
+def load_top_markets():
+    top_market_df = spark.read.csv(TOP_MARKET_DIR, header=False)
+    temp = top_market_df.select("_c0").collect()
+    top_markets_list = [x["_c0"] for x in temp]
+    return top_markets_list
+
 def add_market_col(df):
     df_mod = (df
         .withColumn("market",
@@ -128,7 +118,8 @@ def add_market_col(df):
 
 
 def filter_top_markets(df):
-    df_filt = df.filter(F.col("market").isin(TOP_MARKETS))
+    top_markets_list = load_top_markets()
+    df_filt = df.filter(F.col("market").isin(top_markets_list))
     df_filt = df_filt.repartition(200)
     return df_filt
 

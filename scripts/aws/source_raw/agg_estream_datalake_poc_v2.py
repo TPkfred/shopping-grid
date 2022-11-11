@@ -5,22 +5,20 @@ Estreaming data source = datalake format in AWS
 (tvlp-ds-air-shopping-pn in ml-data-platform-pn)
 
 Version notes:
-- "poc" v2
-    - fix shop counts
-- "poc" (proof of concept, i.e. is accurate modeling feasible?)
-    - filter on:
-        - POS = 'US' & currency = 'USD'
-        - "top" markets
-    - do *not* filter on constricted searches
-    - add features (not aggregated on, but carried forward)
-        - constricted search
-        - carrier
-        - gds, pcc
-        - availability (boolean == 9 or not, etc)
-        - cities
+poc (proof of concept, i.e. is accurate modeling feasible?)
+- filter on:
+    - POS = 'US' & currency = 'USD'
+    - "top" markets
+- do *not* filter on constricted searches
+- add features (not aggregated on, but carried forward)
+    - constricted search
+    - carrier
+    - gds, pcc
+    - availability (boolean == 9 or not)
+- TBD: don't agg on city? (can add in later)
 
-- orig
-    - filter out constricted searches
+orig
+- filter out constricted searches
 """
 
 import os
@@ -209,13 +207,15 @@ def data_agg(df_preproc, date_str):
     func_start = datetime.datetime.now()
     print("Starting data aggregation")
     
-    w = Window.partitionBy(groupby_cols).orderBy("fare_PTC")
+    w1 = Window.partitionBy(groupby_cols)
+    w2 = Window.partitionBy(groupby_cols).orderBy("fare_PTC")
     df_mf_full = (df_preproc
-        .withColumn("fare_rank", F.dense_rank().over(w))
-        .withColumn("solution_counts", F.count("id").over(w))
+        .withColumn("fare_rank", F.dense_rank().over(w2))
+        .withColumn("solution_counts", F.count("id").over(w1))
         # not 100% accurate, but OK for this use case
-        .withColumn("shop_counts", F.approx_count_distinct("id").over(w))
+        .withColumn("shop_counts", F.approx_count_distinct("id").over(w1))
     )
+
     df_min_fares = df_mf_full.filter(F.col("fare_rank") <= 3)
     df_min_fare_final = df_min_fares.select(
         ['market'] + all_cols_to_write
