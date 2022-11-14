@@ -18,7 +18,6 @@ Version notes:
         - gds, pcc
         - availability (boolean == 9 or not, etc)
         - cities
-
 - orig
     - filter out constricted searches
 """

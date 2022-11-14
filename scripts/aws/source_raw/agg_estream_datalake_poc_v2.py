@@ -5,20 +5,21 @@ Estreaming data source = datalake format in AWS
 (tvlp-ds-air-shopping-pn in ml-data-platform-pn)
 
 Version notes:
-poc (proof of concept, i.e. is accurate modeling feasible?)
-- filter on:
-    - POS = 'US' & currency = 'USD'
-    - "top" markets
-- do *not* filter on constricted searches
-- add features (not aggregated on, but carried forward)
-    - constricted search
-    - carrier
-    - gds, pcc
-    - availability (boolean == 9 or not)
-- TBD: don't agg on city? (can add in later)
-
-orig
-- filter out constricted searches
+- "poc" v2
+    - fix shop counts
+- poc (proof of concept, i.e. is accurate modeling feasible?)
+    - filter on:
+        - POS = 'US' & currency = 'USD'
+        - "top" markets
+    - do *not* filter on constricted searches
+    - add features (not aggregated on, but carried forward)
+        - constricted search
+        - carrier
+        - gds, pcc
+        - availability (boolean == 9 or not)
+    - TBD: don't agg on city? (can add in later)
+- orig
+    - filter out constricted searches
 """
 
 import os
@@ -34,8 +35,8 @@ from pyspark.sql.window import Window
 # VARIABLE DEFINITIONS
 
 APP_NAME = "KF-ShoppingGrid"
-data_dir = "s3://tvlp-ds-air-shopping-pn/v1_5"
-out_dir = "s3://tvlp-ds-users/kendra-frederick/shopping-grid/agg-raw-data_poc"
+BASE_INPUT_DIR = "s3://tvlp-ds-air-shopping-pn/v1_5"
+BASE_OUTPUT_DIR = "s3://tvlp-ds-users/kendra-frederick/shopping-grid/agg-raw-data_poc_v2"
 
 TOP_MARKETS = [
     'LHR-JFK',
@@ -206,27 +207,31 @@ def preprocess_data(df):
 def data_agg(df_preproc, date_str):
     func_start = datetime.datetime.now()
     print("Starting data aggregation")
+    date_int = int(date_str)
     
     w1 = Window.partitionBy(groupby_cols)
     w2 = Window.partitionBy(groupby_cols).orderBy("fare_PTC")
     df_mf_full = (df_preproc
         .withColumn("fare_rank", F.dense_rank().over(w2))
-        .withColumn("solution_counts", F.count("id").over(w1))
+        .withColumn("total_solution_counts_day", F.count("id").over(w1))
         # not 100% accurate, but OK for this use case
-        .withColumn("shop_counts", F.approx_count_distinct("id").over(w1))
+        .withColumn("total_shop_counts_day", F.approx_count_distinct("id").over(w1))
     )
 
-    df_min_fares = df_mf_full.filter(F.col("fare_rank") <= 3)
+    df_min_fares = (df_mf_full
+        .filter(F.col("fare_rank") <= 3)
+        .withColumnRenamed("fare_PTC", "fare")
+    )
     df_min_fare_final = df_min_fares.select(
         ['market'] + all_cols_to_write
-        + ['fare_PTC', 'fare_rank', 'solution_counts', 'shop_counts']
+        + ['fare', 'fare_rank', 'total_solution_counts_day', 'total_shop_counts_day']
     ).drop_duplicates()
 
-    day_df = df_min_fare_final.withColumn("search_date", F.lit(date_str))
+    day_df = df_min_fare_final.withColumn("shop_date", F.lit(date_int).cast(T.LongType()))
     # day_df.show(5)
     print(day_df.columns)
 
-    save_path = os.path.join(out_dir, date_str)
+    save_path = os.path.join(BASE_OUTPUT_DIR, date_str)
     num_partitions = 1 if test else 5
 
     print("Writing data")
@@ -258,9 +263,9 @@ def daily_analysis(spark, date, test):
     # define input path
     if test:
         print("Running in test mode -- only loading 1 hour of data")
-        hdfs_path = "{}/year={}/month={}/day={}/hour=19/".format(data_dir, date.year, date.month, date_str)
+        hdfs_path = "{}/year={}/month={}/day={}/hour=19/".format(BASE_INPUT_DIR, date.year, date.month, date_str)
     else:
-        hdfs_path = "{}/year={}/month={}/day={}".format(data_dir, date.year, date.month, date_str)
+        hdfs_path = "{}/year={}/month={}/day={}".format(BASE_INPUT_DIR, date.year, date.month, date_str)
 
     # load data
     try:
@@ -305,7 +310,7 @@ if __name__ == "__main__":
     print("{} - Starting Data Aggregation Script".format(script_start_time.strftime("%Y-%m-%d %H:%M")))
     print("Processing shopping days {} to {} (inclusive)".format(shop_start_str, shop_end_str))
     # print("Analyzing these POS's: {}".format(pos_list_str))
-    print("Saving coverage & fare analysis to: {}".format(out_dir))
+    print("Saving coverage & fare analysis to: {}".format(BASE_OUTPUT_DIR))
 
     # LOOP OVER SHOPPING DAYS
     num_days = (end_dt - start_dt).days

@@ -43,13 +43,24 @@
 --conf spark.driver.memory=8g 
 --conf spark.executor.instances=40
 
+# 5 x c6g.12xl 
+--deploy-mode cluster 
+--conf spark.dynamicAllocation.enabled=false
+--conf spark.executor.cores=5 
+--conf spark.driver.cores=5 
+--conf spark.executor.memoryOverhead=2g 
+--conf spark.driver.memoryOverhead=2g 
+--conf spark.executor.memory=8g 
+--conf spark.driver.memory=8g 
+--conf spark.executor.instances=20
+
 # 10 x d3.8xl
 --deploy-mode cluster 
 --conf spark.dynamicAllocation.enabled=false
 --conf spark.executor.cores=5 
 --conf spark.driver.cores=5 
---conf spark.yarn.executor.memoryOverhead=2g 
---conf spark.yarn.driver.memoryOverhead=2g 
+--conf spark.executor.memoryOverhead=2g 
+--conf spark.driver.memoryOverhead=2g 
 --conf spark.executor.memory=40g 
 --conf spark.driver.memory=40g 
 --conf spark.executor.instances=50
