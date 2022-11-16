@@ -19,6 +19,39 @@
 # ===============================
 # agg_estream_datalake_pos
 
+# 5 x c6g.12xl 
+--deploy-mode cluster 
+--conf spark.dynamicAllocation.enabled=false
+--conf spark.executor.cores=5 
+--conf spark.driver.cores=5 
+--conf spark.executor.memoryOverhead=2g 
+--conf spark.driver.memoryOverhead=2g 
+--conf spark.executor.memory=18g 
+--conf spark.driver.memory=18g 
+--conf spark.executor.instances=40
+
+# 8 x c6g.12xl 
+--deploy-mode cluster 
+--conf spark.dynamicAllocation.enabled=false
+--conf spark.executor.cores=5 
+--conf spark.driver.cores=5 
+--conf spark.executor.memoryOverhead=2g 
+--conf spark.driver.memoryOverhead=2g 
+--conf spark.executor.memory=8g 
+--conf spark.driver.memory=8g 
+--conf spark.executor.instances=60
+
+# 10 x c6g.12xl 
+--deploy-mode cluster 
+--conf spark.dynamicAllocation.enabled=false
+--conf spark.executor.cores=5 
+--conf spark.driver.cores=5 
+--conf spark.executor.memoryOverhead=2g 
+--conf spark.driver.memoryOverhead=2g 
+--conf spark.executor.memory=8g 
+--conf spark.driver.memory=8g 
+--conf spark.executor.instances=80
+
 # 10 x c5.9xlarge core nodes
 --deploy-mode cluster
 --conf spark.executor.cores=5
@@ -43,16 +76,17 @@
 --conf spark.driver.memory=8g 
 --conf spark.executor.instances=40
 
-# 5 x c6g.12xl 
+# 8 x m5.8xl 64GB
 --deploy-mode cluster 
---conf spark.dynamicAllocation.enabled=false
+--conf spark.dynamicAllocation.enabled=false 
 --conf spark.executor.cores=5 
 --conf spark.driver.cores=5 
 --conf spark.executor.memoryOverhead=2g 
 --conf spark.driver.memoryOverhead=2g 
 --conf spark.executor.memory=8g 
 --conf spark.driver.memory=8g 
---conf spark.executor.instances=20
+--conf spark.executor.instances=40
+
 
 # 10 x d3.8xl
 --deploy-mode cluster 

@@ -66,7 +66,7 @@ parser.add_argument(
     "LOS allowed (difference between departure date & return data) is 7 "
     "days, then the max stay duration = 7 + 3 + 3 = 13",
     type=int,
-    default=13,
+    default=21,
 )
 parser.add_argument(
     "--min-days-til-dept",
@@ -78,7 +78,7 @@ parser.add_argument(
     "--max-days-til-dept",
     help="Maximum days til departure",
     type=int,
-    default=60,
+    default=120,
 )
 parser.add_argument(
     "--pos",

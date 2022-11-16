@@ -52,6 +52,21 @@ nohup spark-submit \
     preprocess.py --shop-start 2022-09-21 --shop-end 2022-10-17 --max-stay-duration 21 --max-days-til-dept 120 > pp_stdout.txt 2> /dev/null &
 # --shop-start 2022-08-30 --shop-end 2022-09-20
 
+
+# generate market pickle files
+nohup spark-submit \
+    --driver-memory 10g \
+    --num-executors 10 \
+    --executor-memory 5g \
+    --executor-cores 5 \
+    --master yarn \
+    --conf spark.pyspark.python=python2 \
+    --conf spark.pyspark.driver.python=python2 \
+    --conf "spark.yarn.executor.memoryOverhead=2g" \
+    --conf "spark.yarn.driver.memoryOverhead=2g" \
+    generate_market_pkl_files.py
+
+
 # -------------------------
 # old run code
 # -------------------------
