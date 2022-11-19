@@ -204,7 +204,7 @@ def preprocess_data(df):
     return df_extr
 
 
-def data_agg(df_preproc, date_str):
+def agg_data_and_save(df_preproc, date_str):
     func_start = datetime.datetime.now()
     print("Starting data aggregation")
     date_int = int(date_str)
@@ -232,14 +232,14 @@ def data_agg(df_preproc, date_str):
     print(day_df.columns)
 
     save_path = os.path.join(BASE_OUTPUT_DIR, date_str)
-    num_partitions = 1 if test else 5
+    num_partitions = 3 if test else 25
 
     print("Writing data")
     day_df.coalesce(num_partitions).write.mode("overwrite").parquet(save_path)
     
     func_end = datetime.datetime.now()
     elapsed_time = (func_end - func_start).total_seconds() / 60
-    print("Done with aggregation - Elasped time: {}".format(elapsed_time))
+    # print("Done with aggregation - Elasped time: {:.2f}".format(elapsed_time))
     print("")
 
 
@@ -283,7 +283,7 @@ def daily_analysis(spark, date, test):
     df_preproc = preprocess_data(df_raw_sel)
     # df_cached.unpersist()
     df_pp_cached = df_preproc.cache()
-    data_agg(df_pp_cached, date_str)
+    agg_data_and_save(df_pp_cached, date_str)
 
     loop_end = datetime.datetime.now()
     elapsed_time = (loop_end - loop_start).total_seconds() / 60
@@ -311,6 +311,7 @@ if __name__ == "__main__":
     print("Processing shopping days {} to {} (inclusive)".format(shop_start_str, shop_end_str))
     # print("Analyzing these POS's: {}".format(pos_list_str))
     print("Saving coverage & fare analysis to: {}".format(BASE_OUTPUT_DIR))
+    print("----------------------------")
 
     # LOOP OVER SHOPPING DAYS
     num_days = (end_dt - start_dt).days
