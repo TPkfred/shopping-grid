@@ -2,12 +2,13 @@
 
 # Lin Regr
 overall MAPE: 15.0%
-
+MSE: 136
 
 
 # Gradient Boosted Trees
 GBT-Regr, one model for all markets:
 overall MAPE: 14.4%
+MSE: 117
 +-------+--------------------+
 | market|                mape|
 +-------+--------------------+
@@ -30,6 +31,8 @@ overall MAPE: 14.4%
 
 # RF Regr
 overall MAPE: 13.3%
+MSE: 132
+
 +-------+--------------------+----------------------+
 | market|mape-rf-single-model|mape-rf-individ-models|
 +-------+--------------------+----------------------+
@@ -104,3 +107,163 @@ train: 13.1%
 
 not crazy-bad over-fitting
 
+## PCA-reduced features
+fare features: scaled, then PCA k=3
+count features: normed, then PCA k=2
+
+MAPE: 17.8%
+MSE: 103
+
++-------+--------------------+
+| market|                mape|
++-------+--------------------+
+|LHR-EWR| 0.04727946593057232|
+|LHR-JFK|0.061310638718680505|
+|EWR-LHR| 0.07943416094948834|
+|EWR-CDG| 0.11672323247399656|
+|LHR-LAX| 0.11787079307728048|
+|JFK-LAX| 0.12308869846030551|
+|LAX-EWR| 0.12312079557253425|
+|LAX-JFK| 0.12366152942106287|
+|JFK-LHR|  0.1314034265374511|
+|ATL-EWR|  0.2038658012119045|
+|LGA-MIA| 0.26249109914440244|
+|LAX-SFO| 0.29611076262905295|
+|SFO-LAX|  0.3044266296918005|
+|OAK-LAS|  0.8917722107613479|
++-------+--------------------+ . 
+
+## tailored dtd clipping
+
+LHR-JFK
++------------------+
+|              mape|
++------------------+
+|0.0484862382851539|
++------------------+
+
+
+JFK-LHR
++------------------+
+|              mape|
++------------------+
+|0.1158944785621252|
++------------------+
+
+
+JFK-LAX
++------------------+
+|              mape|
++------------------+
+|0.1003059507563061|
++------------------+
+
+
+LAX-JFK
++-------------------+
+|               mape|
++-------------------+
+|0.10566183690555726|
++-------------------+
+
+
+SFO-LAX
++------------------+
+|              mape|
++------------------+
+|0.1949559909217171|
++------------------+
+
+
+# Clip / filter data
+Remove "regimes" of data that have generally poor coverage:
+- clip out "bad" shop days (10/23 - 10/28)
+- filter out dtd > 120 
+
+## Random Forest
+Overal MAPE:
+Test: 7.56%
+Train: 7.61%
+
++-------+--------------------+
+| market|                mape|
++-------+--------------------+
+|LHR-LAX| 0.03350816700185495|
+|LHR-EWR| 0.03606493183999015|
+|LHR-JFK|0.037307598009722005|
+|LAX-SFO| 0.05487309683876023|
+|SFO-LAX| 0.05703901720419889|
+|LAX-JFK|0.057832124712410754|
+|JFK-LAX|   0.066143455355757|
+|EWR-CDG| 0.06730635087464294|
+|JFK-LHR| 0.07775646365052682|
+|LGA-MIA| 0.07993429740612892|
+|LAX-EWR| 0.08415590873982395|
+|ATL-EWR|  0.0985338760326365|
+|EWR-LHR| 0.15272428818931122|
+|OAK-LAS| 0.16009202246535637|
++-------+--------------------+
+
+Cross Validated & hyper-param's tuned:
+Test: 6.10%
+Train: 6.32%
+
+Feature importances:
+('fare_prev_shop_day', 0.28876858278188594)
+('trailing_avg_fare', 0.2705170203129419)
+('est_fare_from_prev_dept_day', 0.12518074819893965)
+('est_fare_from_next_dept_day', 0.11794167731484437)
+('fr2_fare_prev_shop_day', 0.06205557810031882)
+('fare_prev_dept_day', 0.05947075382130656)
+('fare_next_dept_day', 0.05296685383979888)
+('avg_fare_dtd', 0.014328995590173327)
+('avg_out_avail_low_prev_shop_day', 0.001117768685376613)
+('trailing_std_fare', 0.0009488786145670234)
+('is_holiday', 0.0009425474522879261)
+('days_til_dept', 0.0008966262354161872)
+('trailing_avg_solution_counts', 0.0007885440907385459)
+('solution_counts_prev_shop_day', 0.0007490183128382068)
+('trailing_avg_shop_counts', 0.0007229720132297499)
+('num_itin_prev_shop_day', 0.0007015675151521406)
+('shop_counts_prev_shop_day', 0.0006931918617769995)
+('dept_dt_dow_int', 0.000470209733807055)
+('avg_out_avail_max_prev_shop_day', 0.00041765948757608424)
+('fr1_fr2_out_cxrs_same', 0.00017313938089969178)
+('fr1_fr2_out_cxrs_overlap', 0.00014766665612436138)
+
+### Feature selection
+Top 8 features:
+Test: 6.53%
+Train: 6.70%
+
+All but bottom 4:
+Test: 6.24%
+Train: 6.42%
+
+With PCA:
+Test: 11.7%
+
+### Final Cross-val
++-------+--------------------+
+| market|                mape|
++-------+--------------------+
+|LHR-LAX|0.030363407535239677|
+|LHR-EWR| 0.03164608422867111|
+|LHR-JFK|0.032300538112482964|
+|LAX-SFO|0.047152724218127676|
+|JFK-LAX| 0.05336179264047349|
+|LAX-JFK| 0.05339136702687168|
+|EWR-CDG| 0.05404030431479185|
+|SFO-LAX|0.054191268556009725|
+|LGA-MIA| 0.07054299748646693|
+|LAX-EWR|  0.0734402533235749|
+|ATL-EWR| 0.08293469643952867|
+|EWR-LHR| 0.10704834885074688|
+|OAK-LAS| 0.11209563820543827|
+|JFK-LHR| 0.25134506093012843|
++-------+--------------------+
+Test: 7.45%
+Train: 6.02%
+
+
+Notice how much worse JFK-LHR is! Train-test split must not be determinstic, even with setting a seed.

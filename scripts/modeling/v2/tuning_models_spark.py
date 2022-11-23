@@ -24,6 +24,16 @@ pipeline = Pipeline(stages=[
     regression_model
 ]
 
+def get_cv_results_list(cv_model, print_vals=True):
+    cv_metrics = cv_model.avgMetrics
+    cv_params = [dict(zip([y.name for y in x.keys()], x.values())) for x in list(cv_model.getEstimatorParamMaps())]
+    cv_results = list(zip(cv_params, cv_metrics))
+    if print_vals:
+        for x in cv_results:
+            print(x[0], x[1])
+    return cv_results
+
+
 def get_best_from_cv(cv_model):
     cv_results = list(zip(
         cv_model.getEstimatorParamMaps(), 
@@ -58,17 +68,12 @@ cv = CrossValidator(estimator=pipeline,
 
 cv_model = cv.fit(train)
 pred_cv = cv_model.transform(test)
-cv_results = list(zip(
-    cv_model.getEstimatorParamMaps(), 
-    cv_model.avgMetrics
-))
+
 
 
 # RANDOM FOREST
 
 param_grid = (ParamGridBuilder()
-              # regParam is lambda (weight / factor), elasticNet is alpha (ratio)
-              # note alpha is the opposite of sklearn's defintion
               .addGrid(regression_model.numTrees, [50, 100, 200])
               .addGrid(regression_model.maxDepth, [3, 5, 7, 10])
               .build()
@@ -85,7 +90,5 @@ cv_model = cv.fit(train)
 pred_cv = cv_model.transform(test)
 pred_cv = calc_abs_pct_err(pred_cv)
 
-cv_results = list(zip(
-    cv_model.getEstimatorParamMaps(), 
-    cv_model.avgMetrics
-))
+get_best_from_cv(cv_model)
+

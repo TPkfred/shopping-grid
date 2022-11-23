@@ -219,6 +219,9 @@ def heatmap_min_fare(pdf_to_plot, first_day, num_days=7):
         plt.title(f"Search date: {search_dt.strftime('%Y-%m-%d')} ({dow})")
 
 
+    
+
+
 def heatmap_min_fare_by_dow(market_pdf, market):
     market_pdf['dept_dt_dow'] = market_pdf['outDeptDt_dt'].apply(
         lambda d: datetime.date.weekday(d))

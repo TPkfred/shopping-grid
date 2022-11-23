@@ -202,6 +202,9 @@ lr_pipeline = Pipeline(stages=[
     lr_regression_model
 ])
 
+lin_model = lr_pipeline.fit(train_shuffled)
+test_tx = lin_model.transform(test)
+
 
 # RANDOM FOREST
 
