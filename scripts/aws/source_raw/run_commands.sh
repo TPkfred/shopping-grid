@@ -98,3 +98,11 @@
 --conf spark.executor.memory=40g 
 --conf spark.driver.memory=40g 
 --conf spark.executor.instances=50
+
+
+# ================
+# pull data
+
+
+spark-submit --deploy-mode cluster s3://tvlp-ds-users/kendra-frederick/scripts/pull_data.py 
+-o JFK -d LHR -dd 20221113 -sd 20221031

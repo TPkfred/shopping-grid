@@ -216,7 +216,7 @@ def heatmap_min_fare(pdf_to_plot, first_day, num_days=7):
                             }
                 );
         dow = dow_dict[datetime.date.weekday(search_dt)]
-        plt.title(f"Search date: {search_dt.strftime('%Y-%m-%d')} ({dow})")
+        plt.title(f"Search date: {search_dt.strftime('%Y-%m-%d')}")
 
 
     

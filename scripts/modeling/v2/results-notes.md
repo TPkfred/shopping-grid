@@ -267,3 +267,77 @@ Train: 6.02%
 
 
 Notice how much worse JFK-LHR is! Train-test split must not be determinstic, even with setting a seed.
+
+
+# Clip / filter data, incl holidays
+Remove "regimes" of data that have generally poor coverage, and/or known volatility:
+- clip out "bad" shop days (10/23 - 10/28)
+- filter out dtd > 120 
+- holidays
+
+
+rf_regression_model = RandomForestRegressor(
+    labelCol="fare",
+    numTrees=100,
+    maxDepth=10,
+)
+
+
+Test MAPE:
++-------------------+
+|               mape|
++-------------------+
+|0.04606482918705776|
++-------------------+
+
+None
+Train MAPE:
++-------------------+
+|               mape|
++-------------------+
+|0.05180677873932075|
++-------------------+
+
+
++-------+--------------------+
+| market|                mape|
++-------+--------------------+
+|LHR-JFK|0.022949661350584828|
+|LHR-LAX| 0.02299483047236049|
+|LHR-EWR|0.024029813574555872|
+|LAX-SFO|0.024726906221419924|
+|SFO-LAX|0.037431899340727354|
+|LAX-JFK| 0.03875955611325849|
+|JFK-LAX| 0.03973780318294017|
+|LAX-EWR| 0.04664281360338371|
+|ATL-EWR|0.050093561211971456|
+|EWR-CDG|0.051623282610867426|
+|EWR-LHR| 0.05373296593450191|
+|JFK-LHR| 0.05510647681737911|
+|LGA-MIA| 0.06001005919818195|
+|OAK-LAS| 0.11414291071147765|
++-------+--------------------+
+
+
+Feature importance:
+('fare_prev_shop_day', 0.323074183167787)
+('est_fare_from_next_dept_day', 0.1916686818989582)
+('trailing_avg_fare', 0.1756901033254069)
+('est_fare_from_prev_dept_day', 0.12918489817963213)
+('fr2_fare_prev_shop_day', 0.07505312828438217)
+('fare_prev_dept_day', 0.04454737582885741)
+('fare_next_dept_day', 0.03410101273695583)
+('avg_fare_dtd', 0.020256791223654938)
+('days_til_dept', 0.0009100137815682722)
+('num_itin_prev_shop_day', 0.0008056025006676735)
+('avg_out_avail_max_prev_shop_day', 0.0007206192484696111)
+('trailing_avg_solution_counts', 0.0006790735764291154)
+('solution_counts_prev_shop_day', 0.0006556602941338979)
+('trailing_std_fare', 0.0006434296758017407)
+('trailing_avg_shop_counts', 0.0005678902516767344)
+('shop_counts_prev_shop_day', 0.0005487338927314758)
+('dept_dt_dow_int', 0.00042524814539496644)
+('fr1_fr2_out_cxrs_same', 0.000196763598401078)
+('fr1_fr2_out_cxrs_overlap', 0.00015695951053312153)
+('avg_out_avail_low_prev_shop_day', 0.00011383087855752759)
+('is_holiday', 0.0)

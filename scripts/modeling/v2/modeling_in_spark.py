@@ -76,7 +76,7 @@ def calc_abs_pct_err(df, pred_col="prediction"):
 
 
 
-def feature_importance(pipeline_model, is_cross_val_model, print=True):
+def get_feature_importances(pipeline_model, is_cross_val_model, print=True):
     """
     pipeline_model: fitted pipeline. Assumes last stage is an ML model
         that has `.featureImportances` attribue, and penultimate stage 
