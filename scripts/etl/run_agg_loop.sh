@@ -23,7 +23,7 @@ while [ "$d" != "$end_d" ]; do
         --conf spark.pyspark.python=python2 \
         --conf spark.pyspark.driver.python=python2 \
         --conf "spark.yarn.executor.memoryOverhead=2g" \
-        /home/kendra.frederick/shopping_grid/agg_estream_data.py --run-mode spark-submit --shop-start $d --shop-end $d >> stdout.txt 2> stderr.txt
+        /home/kendra.frederick/shopping_grid/final_scripts/agg_estream_data.py --run-mode spark-submit --shop-start $d --shop-end $d >> stdout.txt 2> stderr.txt
 
     d=$(date -I -d "$d + 1 day")
 done
