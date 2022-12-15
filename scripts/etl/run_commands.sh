@@ -23,7 +23,9 @@ nohup spark-submit \
     --conf spark.pyspark.python=python2 \
     --conf spark.pyspark.driver.python=python2 \
     --conf "spark.yarn.executor.memoryOverhead=2g" \
-    /home/kendra.frederick/shopping_grid/agg_estream_data.py --run-mode spark-submit --shop-start 2022-10-03 --shop-end 2022-10-11 >> stdout.txt 2> stderr.txt &
+    /home/kendra.frederick/shopping_grid/agg_estream_data_v2.py --run-mode spark-submit --shop-start 2022-11-20 --shop-end 2022-11-20 >> stdout.txt 2> stderr.txt &
+
+
 
 # further processing
 nohup spark-submit \

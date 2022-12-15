@@ -75,13 +75,12 @@ info_cols_raw = [
     'out_origin_city', 'out_destination_city',
     'constricted_search',
     # added in v4
-    'out_departure_time', 'in_departure_time',
-    'out_marketing_cxr', 'in_marketing_cxr',
-    'out_flight_numbers', 'in_flight_numbers',
-    'out_booking_class', 'in_booking_class',
-    'out_cabin_class', 'in_cabin_class',
-    # from previous versions; moved to keep order nice
-    'out_num_stops', 'in_num_stops',
+    'out_marketing_cxr', 'out_departure_time', 'out_flight_numbers', 
+    'out_booking_class', 'out_cabin_class', 
+    'out_num_stops', # from previous versions; moved to keep order nice
+    'in_marketing_cxr', 'in_departure_time', 'in_flight_numbers',
+    'in_booking_class', 'in_cabin_class',
+    'in_num_stops',  # from previous versions; moved to keep order nice
 ]
 info_cols_derived = [
     # 'out_cxr', 'in_cxr',
@@ -90,12 +89,12 @@ info_cols_derived = [
     # 'in_avail_all_009', 'in_avail_any_000', 'in_avail_any_001', 'in_avail_any_002',
 ]
 all_cols_to_write = groupby_cols + info_cols_raw + info_cols_derived
-cache_cols = info_cols_raw + [
+cache_cols = info_cols_raw + groupby_cols + [
     # other columns needed for preprocessing and aggregating
     "id",
-    'out_origin_airport','out_destination_airport',
+    # 'out_origin_airport','out_destination_airport',
     'in_origin_airport', 'in_destination_airport', 
-    'out_departure_date', 'in_departure_date',
+    # 'out_departure_date', 'in_departure_date',
     # 'out_marketing_cxr', 'in_marketing_cxr',
     'request_PTC', 'response_PTC', 'fare_break_down_by_PTC',
     # 'out_remaining_seats', 'in_remaining_seats'
@@ -166,8 +165,6 @@ def filter_other(df):
 
 def explode_fare_filter_adt(df):
     # explode PTC and fare & match their position
-        # note: we want *response* PTC and not *request* 
-        # (they are not always equivalent)
     # v3: changed to require ADT in both requ & resp
     df_expl = (df
         .select("*", F.posexplode("request_PTC").alias("requ_pos", "requ_ptc_"))
@@ -190,6 +187,7 @@ def explode_fare_filter_adt(df):
     )
     return df_adt
 
+# removed in v4 - features weren't useful or weren't complete
 # def extract_features(df):
 #     # add in carrier
 #     df_mod = df.withColumn("out_cxr", F.col("out_marketing_cxr")[0])
@@ -237,11 +235,11 @@ def agg_data_and_save(df_preproc, date_str):
     )
     df_min_fares = (df_mf_full
         .filter(F.col("fare_rank") <= 3)
-        .withColumnRenamed("fare_PTC", "fare")
+        .withColumnRenamed("fare_PTC", "adt_fare")
     )
     df_min_fare_final = df_min_fares.select(
         ['market'] + all_cols_to_write
-        + ['fare', 'fare_rank', 'total_solution_counts_day', 'total_shop_counts_day']
+        + ['adt_fare', 'fare_rank', 'total_solution_counts_day', 'total_shop_counts_day']
     ).drop_duplicates()
     day_df = df_min_fare_final.withColumn("shop_date", F.lit(date_int).cast(T.LongType()))
     print(day_df.columns)
@@ -283,7 +281,6 @@ def daily_analysis(spark, date, test):
         check_time = datetime.datetime.now()
         elapsed_time = (check_time - loop_start).total_seconds() / 60
         print("Done reading raw data - Elapsed time: {:.02f} minutes".format(elapsed_time))
-        # df_cached = df_raw.select(cache_cols).cache()
     except:
         print("COULD NOT LOAD/FIND {}. skipping.".format(hdfs_path))
         return None
@@ -291,7 +288,6 @@ def daily_analysis(spark, date, test):
     df_raw_sel = df_raw.select(cache_cols)
     # process data
     df_preproc = preprocess_data(df_raw_sel)
-    # df_cached.unpersist()
     df_pp_cached = df_preproc.cache()
     agg_data_and_save(df_pp_cached, date_str)
 
