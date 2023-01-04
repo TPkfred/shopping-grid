@@ -271,9 +271,9 @@ def daily_analysis(spark, date, test):
     # define input path
     if test:
         print("Running in test mode -- only loading 1 hour of data")
-        hdfs_path = "{}/year={}/month={}/day={}/hour=19/".format(BASE_INPUT_DIR, date.year, date.month, date_str)
+        hdfs_path = "{}/year={}/month={:02d}/day={}/hour=19/".format(BASE_INPUT_DIR, date.year, date.month, date_str)
     else:
-        hdfs_path = "{}/year={}/month={}/day={}".format(BASE_INPUT_DIR, date.year, date.month, date_str)
+        hdfs_path = "{}/year={}/month={:02d}/day={}".format(BASE_INPUT_DIR, date.year, date.month, date_str)
 
     # load data
     try:
